@@ -24,6 +24,9 @@
    -------------------------------------------------------------------------- */
 
 #include "colourblock.h"
+// -- Godot start --
+#include "alpha.h"
+// -- Godot end --
 
 namespace squish {
 
@@ -210,5 +213,24 @@ void DecompressColour( u8* rgba, void const* block, bool isDxt1 )
             rgba[4*i + j] = codes[offset + j];
     }
 }
+
+// -- Godot start --
+void DecompressColourBc5( u8* rgba, void const* block)
+{
+    void const* rblock = block;
+    void const* gblock = reinterpret_cast< u8 const* >( block ) + 8;
+    DecompressAlphaDxt5(rgba,rblock);
+    for ( int i = 0; i < 16; ++i ) {
+        rgba[i*4] = rgba[i*4 + 3];
+    }
+    DecompressAlphaDxt5(rgba,gblock);
+    for ( int i = 0; i < 16; ++i ) {
+        rgba[i*4+1] = rgba[i*4 + 3];
+        rgba[i*4 + 2] = 0;
+        rgba[i*4 + 3] = 255;
+    }
+}
+// -- GODOT end --
+
 
 } // namespace squish

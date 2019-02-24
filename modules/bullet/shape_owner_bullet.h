@@ -1,13 +1,12 @@
 /*************************************************************************/
 /*  shape_owner_bullet.h                                                 */
-/*  Author: AndreaCatania                                                */
 /*************************************************************************/
 /*                       This file is part of:                           */
 /*                           GODOT ENGINE                                */
-/*                    http://www.godotengine.org                         */
+/*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -34,19 +33,22 @@
 
 #include "rid_bullet.h"
 
+/**
+	@author AndreaCatania
+*/
+
 class ShapeBullet;
 class btCollisionShape;
 class CollisionObjectBullet;
 
-/// Each clas that want to use Shapes must inherit this class
+/// Each class that want to use Shapes must inherit this class
 /// E.G. BodyShape is a child of this
 class ShapeOwnerBullet {
 public:
-	/// This is used to set new shape or replace existing
-	//virtual void _internal_replaceShape(btCollisionShape *p_old_shape, btCollisionShape *p_new_shape) = 0;
-	virtual void on_shape_changed(const ShapeBullet *const p_shape) = 0;
-	virtual void on_shapes_changed() = 0;
-	virtual void remove_shape(class ShapeBullet *p_shape) = 0;
+	virtual int find_shape(ShapeBullet *p_shape) const = 0;
+	virtual void shape_changed(int p_shape_index) = 0;
+	virtual void reload_shapes() = 0;
+	virtual void remove_shape_full(class ShapeBullet *p_shape) = 0;
 	virtual ~ShapeOwnerBullet() {}
 };
 #endif

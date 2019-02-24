@@ -1,12 +1,12 @@
 /*************************************************************************/
-/*  godotsharp_internals.h                                               */
+/*  gd_mono_internals.h                                                  */
 /*************************************************************************/
 /*                       This file is part of:                           */
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,16 +27,26 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #ifndef GD_MONO_INTERNALS_H
 #define GD_MONO_INTERNALS_H
 
 #include <mono/jit/jit.h>
+
+#include "../utils/macros.h"
 
 #include "core/object.h"
 
 namespace GDMonoInternals {
 
 void tie_managed_to_unmanaged(MonoObject *managed, Object *unmanaged);
-}
+
+/**
+ * Do not call this function directly.
+ * Use GDMonoUtils::debug_unhandled_exception(MonoException *) instead.
+ */
+GD_NORETURN void unhandled_exception(MonoException *p_exc);
+
+} // namespace GDMonoInternals
 
 #endif // GD_MONO_INTERNALS_H

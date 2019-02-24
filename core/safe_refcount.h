@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,14 +27,13 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #ifndef SAFE_REFCOUNT_H
 #define SAFE_REFCOUNT_H
 
-#include "os/mutex.h"
-/* x86/x86_64 GCC */
-
+#include "core/os/mutex.h"
+#include "core/typedefs.h"
 #include "platform_config.h"
-#include "typedefs.h"
 
 // Atomic functions, these are used for multithread safe reference counters!
 
@@ -43,7 +42,7 @@
 /* Bogus implementation unaware of multiprocessing */
 
 template <class T>
-static _ALWAYS_INLINE_ T atomic_conditional_increment(register T *pw) {
+static _ALWAYS_INLINE_ T atomic_conditional_increment(volatile T *pw) {
 
 	if (*pw == 0)
 		return 0;
@@ -54,7 +53,7 @@ static _ALWAYS_INLINE_ T atomic_conditional_increment(register T *pw) {
 }
 
 template <class T>
-static _ALWAYS_INLINE_ T atomic_decrement(register T *pw) {
+static _ALWAYS_INLINE_ T atomic_decrement(volatile T *pw) {
 
 	(*pw)--;
 
@@ -62,7 +61,7 @@ static _ALWAYS_INLINE_ T atomic_decrement(register T *pw) {
 }
 
 template <class T>
-static _ALWAYS_INLINE_ T atomic_increment(register T *pw) {
+static _ALWAYS_INLINE_ T atomic_increment(volatile T *pw) {
 
 	(*pw)++;
 
@@ -70,7 +69,7 @@ static _ALWAYS_INLINE_ T atomic_increment(register T *pw) {
 }
 
 template <class T, class V>
-static _ALWAYS_INLINE_ T atomic_sub(register T *pw, register V val) {
+static _ALWAYS_INLINE_ T atomic_sub(volatile T *pw, volatile V val) {
 
 	(*pw) -= val;
 
@@ -78,7 +77,7 @@ static _ALWAYS_INLINE_ T atomic_sub(register T *pw, register V val) {
 }
 
 template <class T, class V>
-static _ALWAYS_INLINE_ T atomic_add(register T *pw, register V val) {
+static _ALWAYS_INLINE_ T atomic_add(volatile T *pw, volatile V val) {
 
 	(*pw) += val;
 
@@ -86,7 +85,7 @@ static _ALWAYS_INLINE_ T atomic_add(register T *pw, register V val) {
 }
 
 template <class T, class V>
-static _ALWAYS_INLINE_ T atomic_exchange_if_greater(register T *pw, register V val) {
+static _ALWAYS_INLINE_ T atomic_exchange_if_greater(volatile T *pw, volatile V val) {
 
 	if (val > *pw)
 		*pw = val;
@@ -102,7 +101,7 @@ static _ALWAYS_INLINE_ T atomic_exchange_if_greater(register T *pw, register V v
 // Clang states it supports GCC atomic builtins.
 
 template <class T>
-static _ALWAYS_INLINE_ T atomic_conditional_increment(register T *pw) {
+static _ALWAYS_INLINE_ T atomic_conditional_increment(volatile T *pw) {
 
 	while (true) {
 		T tmp = static_cast<T const volatile &>(*pw);
@@ -114,31 +113,31 @@ static _ALWAYS_INLINE_ T atomic_conditional_increment(register T *pw) {
 }
 
 template <class T>
-static _ALWAYS_INLINE_ T atomic_decrement(register T *pw) {
+static _ALWAYS_INLINE_ T atomic_decrement(volatile T *pw) {
 
 	return __sync_sub_and_fetch(pw, 1);
 }
 
 template <class T>
-static _ALWAYS_INLINE_ T atomic_increment(register T *pw) {
+static _ALWAYS_INLINE_ T atomic_increment(volatile T *pw) {
 
 	return __sync_add_and_fetch(pw, 1);
 }
 
 template <class T, class V>
-static _ALWAYS_INLINE_ T atomic_sub(register T *pw, register V val) {
+static _ALWAYS_INLINE_ T atomic_sub(volatile T *pw, volatile V val) {
 
 	return __sync_sub_and_fetch(pw, val);
 }
 
 template <class T, class V>
-static _ALWAYS_INLINE_ T atomic_add(register T *pw, register V val) {
+static _ALWAYS_INLINE_ T atomic_add(volatile T *pw, volatile V val) {
 
 	return __sync_add_and_fetch(pw, val);
 }
 
 template <class T, class V>
-static _ALWAYS_INLINE_ T atomic_exchange_if_greater(register T *pw, register V val) {
+static _ALWAYS_INLINE_ T atomic_exchange_if_greater(volatile T *pw, volatile V val) {
 
 	while (true) {
 		T tmp = static_cast<T const volatile &>(*pw);
@@ -152,19 +151,19 @@ static _ALWAYS_INLINE_ T atomic_exchange_if_greater(register T *pw, register V v
 #elif defined(_MSC_VER)
 // For MSVC use a separate compilation unit to prevent windows.h from polluting
 // the global namespace.
-uint32_t atomic_conditional_increment(register uint32_t *pw);
-uint32_t atomic_decrement(register uint32_t *pw);
-uint32_t atomic_increment(register uint32_t *pw);
-uint32_t atomic_sub(register uint32_t *pw, register uint32_t val);
-uint32_t atomic_add(register uint32_t *pw, register uint32_t val);
-uint32_t atomic_exchange_if_greater(register uint32_t *pw, register uint32_t val);
+uint32_t atomic_conditional_increment(volatile uint32_t *pw);
+uint32_t atomic_decrement(volatile uint32_t *pw);
+uint32_t atomic_increment(volatile uint32_t *pw);
+uint32_t atomic_sub(volatile uint32_t *pw, volatile uint32_t val);
+uint32_t atomic_add(volatile uint32_t *pw, volatile uint32_t val);
+uint32_t atomic_exchange_if_greater(volatile uint32_t *pw, volatile uint32_t val);
 
-uint64_t atomic_conditional_increment(register uint64_t *pw);
-uint64_t atomic_decrement(register uint64_t *pw);
-uint64_t atomic_increment(register uint64_t *pw);
-uint64_t atomic_sub(register uint64_t *pw, register uint64_t val);
-uint64_t atomic_add(register uint64_t *pw, register uint64_t val);
-uint64_t atomic_exchange_if_greater(register uint64_t *pw, register uint64_t val);
+uint64_t atomic_conditional_increment(volatile uint64_t *pw);
+uint64_t atomic_decrement(volatile uint64_t *pw);
+uint64_t atomic_increment(volatile uint64_t *pw);
+uint64_t atomic_sub(volatile uint64_t *pw, volatile uint64_t val);
+uint64_t atomic_add(volatile uint64_t *pw, volatile uint64_t val);
+uint64_t atomic_exchange_if_greater(volatile uint64_t *pw, volatile uint64_t val);
 
 #else
 //no threads supported?

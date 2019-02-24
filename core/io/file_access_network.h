@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,13 +27,14 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #ifndef FILE_ACCESS_NETWORK_H
 #define FILE_ACCESS_NETWORK_H
 
-#include "io/stream_peer_tcp.h"
-#include "os/file_access.h"
-#include "os/semaphore.h"
-#include "os/thread.h"
+#include "core/io/stream_peer_tcp.h"
+#include "core/os/file_access.h"
+#include "core/os/semaphore.h"
+#include "core/os/thread.h"
 
 class FileAccessNetwork;
 
@@ -45,8 +46,6 @@ class FileAccessNetworkClient {
 		uint64_t offset;
 		int size;
 	};
-
-	int ml;
 
 	List<BlockRequest> block_requests;
 
@@ -99,7 +98,6 @@ class FileAccessNetwork : public FileAccess {
 
 	int page_size;
 	int read_ahead;
-	int max_pages;
 
 	mutable int waiting_on_page;
 	mutable int last_activity_val;

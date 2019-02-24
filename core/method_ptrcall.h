@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,12 +27,13 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #ifndef METHOD_PTRCALL_H
 #define METHOD_PTRCALL_H
 
-#include "math_2d.h"
-#include "typedefs.h"
-#include "variant.h"
+#include "core/math/transform_2d.h"
+#include "core/typedefs.h"
+#include "core/variant.h"
 
 #ifdef PTRCALL_ENABLED
 
@@ -179,7 +180,7 @@ struct PtrToArg<const T *> {
 			{                                                                                    \
 				PoolVector<m_type>::Read r = dvs->read();                                        \
 				for (int i = 0; i < len; i++) {                                                  \
-					ret[i] = r[i];                                                               \
+					ret.write[i] = r[i];                                                         \
 				}                                                                                \
 			}                                                                                    \
 			return ret;                                                                          \
@@ -206,13 +207,57 @@ struct PtrToArg<const T *> {
 			{                                                                                    \
 				PoolVector<m_type>::Read r = dvs->read();                                        \
 				for (int i = 0; i < len; i++) {                                                  \
-					ret[i] = r[i];                                                               \
+					ret.write[i] = r[i];                                                         \
 				}                                                                                \
 			}                                                                                    \
 			return ret;                                                                          \
 		}                                                                                        \
 	}
 
+#define MAKE_VECARG_ALT(m_type, m_type_alt)                                                      \
+	template <>                                                                                  \
+	struct PtrToArg<Vector<m_type_alt> > {                                                       \
+		_FORCE_INLINE_ static Vector<m_type_alt> convert(const void *p_ptr) {                    \
+			const PoolVector<m_type> *dvs = reinterpret_cast<const PoolVector<m_type> *>(p_ptr); \
+			Vector<m_type_alt> ret;                                                              \
+			int len = dvs->size();                                                               \
+			ret.resize(len);                                                                     \
+			{                                                                                    \
+				PoolVector<m_type>::Read r = dvs->read();                                        \
+				for (int i = 0; i < len; i++) {                                                  \
+					ret.write[i] = r[i];                                                         \
+				}                                                                                \
+			}                                                                                    \
+			return ret;                                                                          \
+		}                                                                                        \
+		_FORCE_INLINE_ static void encode(Vector<m_type_alt> p_vec, void *p_ptr) {               \
+			PoolVector<m_type> *dv = reinterpret_cast<PoolVector<m_type> *>(p_ptr);              \
+			int len = p_vec.size();                                                              \
+			dv->resize(len);                                                                     \
+			{                                                                                    \
+				PoolVector<m_type>::Write w = dv->write();                                       \
+				for (int i = 0; i < len; i++) {                                                  \
+					w[i] = p_vec[i];                                                             \
+				}                                                                                \
+			}                                                                                    \
+		}                                                                                        \
+	};                                                                                           \
+	template <>                                                                                  \
+	struct PtrToArg<const Vector<m_type_alt> &> {                                                \
+		_FORCE_INLINE_ static Vector<m_type_alt> convert(const void *p_ptr) {                    \
+			const PoolVector<m_type> *dvs = reinterpret_cast<const PoolVector<m_type> *>(p_ptr); \
+			Vector<m_type_alt> ret;                                                              \
+			int len = dvs->size();                                                               \
+			ret.resize(len);                                                                     \
+			{                                                                                    \
+				PoolVector<m_type>::Read r = dvs->read();                                        \
+				for (int i = 0; i < len; i++) {                                                  \
+					ret.write[i] = r[i];                                                         \
+				}                                                                                \
+			}                                                                                    \
+			return ret;                                                                          \
+		}                                                                                        \
+	}
 MAKE_VECARG(String);
 MAKE_VECARG(uint8_t);
 MAKE_VECARG(int);
@@ -220,6 +265,7 @@ MAKE_VECARG(float);
 MAKE_VECARG(Vector2);
 MAKE_VECARG(Vector3);
 MAKE_VECARG(Color);
+MAKE_VECARG_ALT(String, StringName);
 
 //for stuff that gets converted to Array vectors
 #define MAKE_VECARR(m_type)                                                    \
@@ -231,7 +277,7 @@ MAKE_VECARG(Color);
 			int len = arr->size();                                             \
 			ret.resize(len);                                                   \
 			for (int i = 0; i < len; i++) {                                    \
-				ret[i] = (*arr)[i];                                            \
+				ret.write[i] = (*arr)[i];                                      \
 			}                                                                  \
 			return ret;                                                        \
 		}                                                                      \
@@ -252,7 +298,7 @@ MAKE_VECARG(Color);
 			int len = arr->size();                                             \
 			ret.resize(len);                                                   \
 			for (int i = 0; i < len; i++) {                                    \
-				ret[i] = (*arr)[i];                                            \
+				ret.write[i] = (*arr)[i];                                      \
 			}                                                                  \
 			return ret;                                                        \
 		}                                                                      \

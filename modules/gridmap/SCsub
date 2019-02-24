@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
 Import('env')
+Import('env_modules')
 
-env.add_source_files(env.modules_sources, "*.cpp")
+env_gridmap = env_modules.Clone()
 
-Export('env')
+env_gridmap.add_source_files(env.modules_sources, "*.cpp")

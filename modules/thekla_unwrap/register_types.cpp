@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,8 +27,11 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #include "register_types.h"
+#include "core/error_macros.h"
 #include "thirdparty/thekla_atlas/thekla/thekla_atlas.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 extern bool (*array_mesh_lightmap_unwrap_callback)(float p_texel_size, const float *p_vertices, const float *p_normals, int p_vertex_count, const int *p_indices, const int *p_face_materials, int p_index_count, float **r_uv, int **r_vertex, int *r_vertex_count, int **r_index, int *r_index_count, int *r_size_hint_x, int *r_size_hint_y);
@@ -42,7 +45,7 @@ bool thekla_mesh_lightmap_unwrap_callback(float p_texel_size, const float *p_ver
 		input_mesh.face_array[i].vertex_index[0] = p_indices[i * 3 + 0];
 		input_mesh.face_array[i].vertex_index[1] = p_indices[i * 3 + 1];
 		input_mesh.face_array[i].vertex_index[2] = p_indices[i * 3 + 2];
-		printf("face %i - %i, %i, %i - mat %i\n", i, input_mesh.face_array[i].vertex_index[0], input_mesh.face_array[i].vertex_index[1], input_mesh.face_array[i].vertex_index[2], p_face_materials[i]);
+		//printf("face %i - %i, %i, %i - mat %i\n", i, input_mesh.face_array[i].vertex_index[0], input_mesh.face_array[i].vertex_index[1], input_mesh.face_array[i].vertex_index[2], p_face_materials[i]);
 		input_mesh.face_array[i].material_index = p_face_materials[i];
 	}
 	input_mesh.vertex_array = new Thekla::Atlas_Input_Vertex[p_vertex_count];
@@ -54,8 +57,8 @@ bool thekla_mesh_lightmap_unwrap_callback(float p_texel_size, const float *p_ver
 		}
 		input_mesh.vertex_array[i].uv[0] = 0;
 		input_mesh.vertex_array[i].uv[1] = 0;
-		printf("vertex %i - %f, %f, %f\n", i, input_mesh.vertex_array[i].position[0], input_mesh.vertex_array[i].position[1], input_mesh.vertex_array[i].position[2]);
-		printf("normal %i - %f, %f, %f\n", i, input_mesh.vertex_array[i].normal[0], input_mesh.vertex_array[i].normal[1], input_mesh.vertex_array[i].normal[2]);
+		//printf("vertex %i - %f, %f, %f\n", i, input_mesh.vertex_array[i].position[0], input_mesh.vertex_array[i].position[1], input_mesh.vertex_array[i].position[2]);
+		//printf("normal %i - %f, %f, %f\n", i, input_mesh.vertex_array[i].normal[0], input_mesh.vertex_array[i].normal[1], input_mesh.vertex_array[i].normal[2]);
 	}
 	input_mesh.face_count = p_index_count / 3;
 	input_mesh.vertex_count = p_vertex_count;
@@ -65,6 +68,7 @@ bool thekla_mesh_lightmap_unwrap_callback(float p_texel_size, const float *p_ver
 	Thekla::atlas_set_default_options(&options);
 	options.packer_options.witness.packing_quality = 1;
 	options.packer_options.witness.texel_area = 1.0 / p_texel_size;
+	options.packer_options.witness.conservative = false;
 
 	//generate
 	Thekla::Atlas_Error err;
@@ -72,6 +76,11 @@ bool thekla_mesh_lightmap_unwrap_callback(float p_texel_size, const float *p_ver
 
 	delete[] input_mesh.face_array;
 	delete[] input_mesh.vertex_array;
+
+	if (output == NULL) {
+		ERR_PRINT("could not generate atlas output mesh");
+		return false;
+	}
 
 	if (err != Thekla::Atlas_Error_Success) {
 		printf("error with atlas\n");

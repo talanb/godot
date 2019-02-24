@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,11 +27,11 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #ifndef GODOTSHARP_EDITOR_H
 #define GODOTSHARP_EDITOR_H
 
 #include "godotsharp_builds.h"
-
 #include "monodevelop_instance.h"
 
 class GodotSharpEditor : public Node {
@@ -43,36 +43,59 @@ class GodotSharpEditor : public Node {
 	PopupMenu *menu_popup;
 
 	AcceptDialog *error_dialog;
+	AcceptDialog *about_dialog;
+	CheckBox *about_dialog_checkbox;
 
 	ToolButton *bottom_panel_btn;
 
 	GodotSharpBuilds *godotsharp_builds;
 
-	MonoDevelopInstance *monodevel_instance;
+	MonoDevelopInstance *monodevelop_instance;
+#ifdef OSX_ENABLED
+	MonoDevelopInstance *visualstudio_mac_instance;
+#endif
 
 	bool _create_project_solution();
+	void _make_api_solutions_if_needed();
+	void _make_api_solutions_if_needed_impl();
 
 	void _remove_create_sln_menu_option();
+	void _show_about_dialog();
+	void _toggle_about_dialog_on_start(bool p_enabled);
 
 	void _menu_option_pressed(int p_id);
 
 	static GodotSharpEditor *singleton;
 
 protected:
+	void _notification(int p_notification);
 	static void _bind_methods();
 
 public:
 	enum MenuOptions {
-		MENU_CREATE_SLN
+		MENU_CREATE_SLN,
+		MENU_ABOUT_CSHARP,
 	};
 
 	enum ExternalEditor {
 		EDITOR_NONE,
+#ifdef WINDOWS_ENABLED
+		//EDITOR_VISUALSTUDIO, // TODO
 		EDITOR_MONODEVELOP,
-		EDITOR_CODE,
+		EDITOR_VSCODE
+#elif OSX_ENABLED
+		EDITOR_VISUALSTUDIO_MAC,
+		EDITOR_MONODEVELOP,
+		EDITOR_VSCODE
+#elif UNIX_ENABLED
+		EDITOR_MONODEVELOP,
+		EDITOR_VSCODE
+#endif
 	};
 
 	_FORCE_INLINE_ static GodotSharpEditor *get_singleton() { return singleton; }
+
+	static void register_internal_calls();
 
 	void show_error_dialog(const String &p_message, const String &p_title = "Error");
 

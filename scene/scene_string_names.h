@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,11 +27,12 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #ifndef SCENE_STRING_NAMES_H
 #define SCENE_STRING_NAMES_H
 
-#include "node_path.h"
-#include "string_db.h"
+#include "core/node_path.h"
+#include "core/string_name.h"
 class SceneStringNames {
 
 	friend void register_scene_types();
@@ -68,7 +69,9 @@ public:
 	StringName shader_unshaded;
 	StringName shading_mode;
 	StringName tree_entered;
+	StringName tree_exiting;
 	StringName tree_exited;
+	StringName ready;
 	StringName size_flags_changed;
 	StringName minimum_size_changed;
 	StringName sleeping_state_changed;
@@ -123,6 +126,8 @@ public:
 
 	StringName _update_scroll;
 	StringName _update_xform;
+
+	StringName _clips_input;
 
 	StringName _proxgroup_add;
 	StringName _proxgroup_remove;
@@ -195,6 +200,12 @@ public:
 	StringName _default;
 
 	StringName node_configuration_warning_changed;
+
+	StringName output;
+
+	StringName parameters_base_path;
+
+	StringName tracks_changed;
 
 	enum {
 		MAX_MATERIALS = 32

@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,10 +27,11 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #ifndef MONODEVELOP_INSTANCE_H
 #define MONODEVELOP_INSTANCE_H
 
-#include "reference.h"
+#include "core/reference.h"
 
 #include "../mono_gc_handle.h"
 #include "../mono_gd/gd_mono_method.h"
@@ -41,10 +42,15 @@ class MonoDevelopInstance {
 	GDMonoMethod *execute_method;
 
 public:
-	void execute(const Vector<String> &p_files);
-	void execute(const String &p_files);
+	enum EditorId {
+		MONODEVELOP = 0,
+		VISUALSTUDIO_FOR_MAC = 1
+	};
 
-	MonoDevelopInstance(const String &p_solution);
+	void execute(const Vector<String> &p_files);
+	void execute(const String &p_file);
+
+	MonoDevelopInstance(const String &p_solution, EditorId p_editor_id);
 };
 
 #endif // MONODEVELOP_INSTANCE_H

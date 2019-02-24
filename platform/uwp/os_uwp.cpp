@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,8 +27,15 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
+// Must include Winsock before windows.h (included by os_uwp.h)
+#include "drivers/unix/net_socket_posix.h"
+
 #include "os_uwp.h"
 
+#include "core/io/marshalls.h"
+#include "core/project_settings.h"
+#include "drivers/gles2/rasterizer_gles2.h"
 #include "drivers/gles3/rasterizer_gles3.h"
 #include "drivers/unix/ip_unix.h"
 #include "drivers/windows/dir_access_windows.h"
@@ -36,15 +43,11 @@
 #include "drivers/windows/mutex_windows.h"
 #include "drivers/windows/rw_lock_windows.h"
 #include "drivers/windows/semaphore_windows.h"
-#include "io/marshalls.h"
 #include "main/main.h"
-#include "platform/windows/packet_peer_udp_winsock.h"
-#include "platform/windows/stream_peer_winsock.h"
-#include "platform/windows/tcp_server_winsock.h"
 #include "platform/windows/windows_terminal_logger.h"
-#include "project_settings.h"
 #include "servers/audio_server.h"
 #include "servers/visual/visual_server_raster.h"
+#include "servers/visual/visual_server_wrap_mt.h"
 #include "thread_uwp.h"
 
 #include <ppltasks.h>
@@ -64,23 +67,22 @@ using namespace Windows::Devices::Sensors;
 using namespace Windows::ApplicationModel::DataTransfer;
 using namespace concurrency;
 
-int OSUWP::get_video_driver_count() const {
-
-	return 1;
-}
-const char *OSUWP::get_video_driver_name(int p_driver) const {
-
-	return "GLES3";
+int OS_UWP::get_video_driver_count() const {
+	return 2;
 }
 
-Size2 OSUWP::get_window_size() const {
+Size2 OS_UWP::get_window_size() const {
 	Size2 size;
 	size.width = video_mode.width;
 	size.height = video_mode.height;
 	return size;
 }
 
-void OSUWP::set_window_size(const Size2 p_size) {
+int OS_UWP::get_current_video_driver() const {
+	return video_driver_index;
+}
+
+void OS_UWP::set_window_size(const Size2 p_size) {
 
 	Windows::Foundation::Size new_size;
 	new_size.Width = p_size.width;
@@ -95,7 +97,7 @@ void OSUWP::set_window_size(const Size2 p_size) {
 	}
 }
 
-void OSUWP::set_window_fullscreen(bool p_enabled) {
+void OS_UWP::set_window_fullscreen(bool p_enabled) {
 
 	ApplicationView ^ view = ApplicationView::GetForCurrentView();
 
@@ -115,12 +117,12 @@ void OSUWP::set_window_fullscreen(bool p_enabled) {
 	}
 }
 
-bool OSUWP::is_window_fullscreen() const {
+bool OS_UWP::is_window_fullscreen() const {
 
 	return ApplicationView::GetForCurrentView()->IsFullScreenMode;
 }
 
-void OSUWP::set_keep_screen_on(bool p_enabled) {
+void OS_UWP::set_keep_screen_on(bool p_enabled) {
 
 	if (is_keep_screen_on() == p_enabled) return;
 
@@ -132,19 +134,7 @@ void OSUWP::set_keep_screen_on(bool p_enabled) {
 	OS::set_keep_screen_on(p_enabled);
 }
 
-int OSUWP::get_audio_driver_count() const {
-
-	return AudioDriverManager::get_driver_count();
-}
-
-const char *OSUWP::get_audio_driver_name(int p_driver) const {
-
-	AudioDriver *driver = AudioDriverManager::get_driver(p_driver);
-	ERR_FAIL_COND_V(!driver, "");
-	return AudioDriverManager::get_driver(p_driver)->get_name();
-}
-
-void OSUWP::initialize_core() {
+void OS_UWP::initialize_core() {
 
 	last_button_state = 0;
 
@@ -162,9 +152,7 @@ void OSUWP::initialize_core() {
 	DirAccess::make_default<DirAccessWindows>(DirAccess::ACCESS_USERDATA);
 	DirAccess::make_default<DirAccessWindows>(DirAccess::ACCESS_FILESYSTEM);
 
-	TCPServerWinsock::make_default();
-	StreamPeerWinsock::make_default();
-	PacketPeerUDPWinsock::make_default();
+	NetSocketPosix::make_default();
 
 	// We need to know how often the clock is updated
 	if (!QueryPerformanceFrequency((LARGE_INTEGER *)&ticks_per_second))
@@ -179,27 +167,97 @@ void OSUWP::initialize_core() {
 	cursor_shape = CURSOR_ARROW;
 }
 
-bool OSUWP::can_draw() const {
+bool OS_UWP::can_draw() const {
 
 	return !minimized;
 };
 
-void OSUWP::set_gl_context(ContextEGL *p_context) {
+void OS_UWP::set_window(Windows::UI::Core::CoreWindow ^ p_window) {
+	window = p_window;
+}
 
-	gl_context = p_context;
-};
-
-void OSUWP::screen_size_changed() {
+void OS_UWP::screen_size_changed() {
 
 	gl_context->reset();
 };
 
-void OSUWP::initialize(const VideoMode &p_desired, int p_video_driver, int p_audio_driver) {
+Error OS_UWP::initialize(const VideoMode &p_desired, int p_video_driver, int p_audio_driver) {
 
 	main_loop = NULL;
 	outside = true;
 
-	gl_context->initialize();
+	ContextEGL_UWP::Driver opengl_api_type = ContextEGL_UWP::GLES_2_0;
+
+	if (p_video_driver == VIDEO_DRIVER_GLES2) {
+		opengl_api_type = ContextEGL_UWP::GLES_2_0;
+	}
+
+	bool gl_initialization_error = false;
+
+	gl_context = NULL;
+	while (!gl_context) {
+		gl_context = memnew(ContextEGL_UWP(window, opengl_api_type));
+
+		if (gl_context->initialize() != OK) {
+			memdelete(gl_context);
+			gl_context = NULL;
+
+			if (GLOBAL_GET("rendering/quality/driver/driver_fallback") == "Best") {
+				if (p_video_driver == VIDEO_DRIVER_GLES2) {
+					gl_initialization_error = true;
+					break;
+				}
+
+				p_video_driver = VIDEO_DRIVER_GLES2;
+				opengl_api_type = ContextEGL_UWP::GLES_2_0;
+			} else {
+				gl_initialization_error = true;
+				break;
+			}
+		}
+	}
+
+	while (true) {
+		if (opengl_api_type == ContextEGL_UWP::GLES_3_0) {
+			if (RasterizerGLES3::is_viable() == OK) {
+				RasterizerGLES3::register_config();
+				RasterizerGLES3::make_current();
+				break;
+			} else {
+				if (GLOBAL_GET("rendering/quality/driver/driver_fallback") == "Best") {
+					p_video_driver = VIDEO_DRIVER_GLES2;
+					opengl_api_type = ContextEGL_UWP::GLES_2_0;
+					continue;
+				} else {
+					gl_initialization_error = true;
+					break;
+				}
+			}
+		}
+
+		if (opengl_api_type == ContextEGL_UWP::GLES_2_0) {
+			if (RasterizerGLES2::is_viable() == OK) {
+				RasterizerGLES2::register_config();
+				RasterizerGLES2::make_current();
+				break;
+			} else {
+				gl_initialization_error = true;
+				break;
+			}
+		}
+	}
+
+	if (gl_initialization_error) {
+		OS::get_singleton()->alert("Your video card driver does not support any of the supported OpenGL versions.\n"
+								   "Please update your drivers or if you have a very old or integrated GPU upgrade it.",
+				"Unable to initialize Video driver");
+		return ERR_UNAVAILABLE;
+	}
+
+	video_driver_index = p_video_driver;
+	gl_context->make_current();
+	gl_context->set_use_vsync(video_mode.use_vsync);
+
 	VideoMode vm;
 	vm.width = gl_context->get_window_width();
 	vm.height = gl_context->get_window_height();
@@ -237,23 +295,13 @@ void OSUWP::initialize(const VideoMode &p_desired, int p_video_driver, int p_aud
 
 	set_video_mode(vm);
 
-	gl_context->make_current();
-
-	RasterizerGLES3::register_config();
-	RasterizerGLES3::make_current();
-	gl_context->set_use_vsync(vm.use_vsync);
-
 	visual_server = memnew(VisualServerRaster);
-	// FIXME: Reimplement threaded rendering? Or remove?
-	/*
+	// FIXME: Reimplement threaded rendering
 	if (get_render_thread_mode() != RENDER_THREAD_UNSAFE) {
-
-		visual_server = memnew(VisualServerWrapMT(visual_server, get_render_thread_mode() == RENDER_SEPARATE_THREAD));
+		visual_server = memnew(VisualServerWrapMT(visual_server, false));
 	}
-	*/
 
 	visual_server->init();
-
 	input = memnew(InputDefault);
 
 	joypad = ref new JoypadUWP(input);
@@ -296,10 +344,12 @@ void OSUWP::initialize(const VideoMode &p_desired, int p_video_driver, int p_aud
 	if (is_keep_screen_on())
 		display_request->RequestActive();
 
-	set_keep_screen_on(GLOBAL_DEF("display/window/keep_screen_on", true));
+	set_keep_screen_on(GLOBAL_DEF("display/window/energy_saving/keep_screen_on", true));
+
+	return OK;
 }
 
-void OSUWP::set_clipboard(const String &p_text) {
+void OS_UWP::set_clipboard(const String &p_text) {
 
 	DataPackage ^ clip = ref new DataPackage();
 	clip->RequestedOperation = DataPackageOperation::Copy;
@@ -308,7 +358,7 @@ void OSUWP::set_clipboard(const String &p_text) {
 	Clipboard::SetContent(clip);
 };
 
-String OSUWP::get_clipboard() const {
+String OS_UWP::get_clipboard() const {
 
 	if (managed_object->clipboard != nullptr)
 		return managed_object->clipboard->Data();
@@ -316,25 +366,25 @@ String OSUWP::get_clipboard() const {
 		return "";
 };
 
-void OSUWP::input_event(const Ref<InputEvent> &p_event) {
+void OS_UWP::input_event(const Ref<InputEvent> &p_event) {
 
 	input->parse_input_event(p_event);
 };
 
-void OSUWP::delete_main_loop() {
+void OS_UWP::delete_main_loop() {
 
 	if (main_loop)
 		memdelete(main_loop);
 	main_loop = NULL;
 }
 
-void OSUWP::set_main_loop(MainLoop *p_main_loop) {
+void OS_UWP::set_main_loop(MainLoop *p_main_loop) {
 
 	input->set_main_loop(p_main_loop);
 	main_loop = p_main_loop;
 }
 
-void OSUWP::finalize() {
+void OS_UWP::finalize() {
 
 	if (main_loop)
 		memdelete(main_loop);
@@ -353,17 +403,19 @@ void OSUWP::finalize() {
 	joypad = nullptr;
 }
 
-void OSUWP::finalize_core() {
+void OS_UWP::finalize_core() {
+
+	NetSocketPosix::cleanup();
 }
 
-void OSUWP::alert(const String &p_alert, const String &p_title) {
+void OS_UWP::alert(const String &p_alert, const String &p_title) {
 
 	Platform::String ^ alert = ref new Platform::String(p_alert.c_str());
 	Platform::String ^ title = ref new Platform::String(p_title.c_str());
 
 	MessageDialog ^ msg = ref new MessageDialog(alert, title);
 
-	UICommand ^ close = ref new UICommand("Close", ref new UICommandInvokedHandler(managed_object, &OSUWP::ManagedType::alert_close));
+	UICommand ^ close = ref new UICommand("Close", ref new UICommandInvokedHandler(managed_object, &OS_UWP::ManagedType::alert_close));
 	msg->Commands->Append(close);
 	msg->DefaultCommandIndex = 0;
 
@@ -372,30 +424,29 @@ void OSUWP::alert(const String &p_alert, const String &p_title) {
 	msg->ShowAsync();
 }
 
-void OSUWP::ManagedType::alert_close(IUICommand ^ command) {
+void OS_UWP::ManagedType::alert_close(IUICommand ^ command) {
 
 	alert_close_handle = false;
 }
 
-void OSUWP::ManagedType::on_clipboard_changed(Platform::Object ^ sender, Platform::Object ^ ev) {
+void OS_UWP::ManagedType::on_clipboard_changed(Platform::Object ^ sender, Platform::Object ^ ev) {
 
 	update_clipboard();
 }
 
-void OSUWP::ManagedType::update_clipboard() {
+void OS_UWP::ManagedType::update_clipboard() {
 
 	DataPackageView ^ data = Clipboard::GetContent();
 
 	if (data->Contains(StandardDataFormats::Text)) {
 
 		create_task(data->GetTextAsync()).then([this](Platform::String ^ clipboard_content) {
-
 			this->clipboard = clipboard_content;
 		});
 	}
 }
 
-void OSUWP::ManagedType::on_accelerometer_reading_changed(Accelerometer ^ sender, AccelerometerReadingChangedEventArgs ^ args) {
+void OS_UWP::ManagedType::on_accelerometer_reading_changed(Accelerometer ^ sender, AccelerometerReadingChangedEventArgs ^ args) {
 
 	AccelerometerReading ^ reading = args->Reading;
 
@@ -405,7 +456,7 @@ void OSUWP::ManagedType::on_accelerometer_reading_changed(Accelerometer ^ sender
 			reading->AccelerationZ));
 }
 
-void OSUWP::ManagedType::on_magnetometer_reading_changed(Magnetometer ^ sender, MagnetometerReadingChangedEventArgs ^ args) {
+void OS_UWP::ManagedType::on_magnetometer_reading_changed(Magnetometer ^ sender, MagnetometerReadingChangedEventArgs ^ args) {
 
 	MagnetometerReading ^ reading = args->Reading;
 
@@ -415,7 +466,7 @@ void OSUWP::ManagedType::on_magnetometer_reading_changed(Magnetometer ^ sender, 
 			reading->MagneticFieldZ));
 }
 
-void OSUWP::ManagedType::on_gyroscope_reading_changed(Gyrometer ^ sender, GyrometerReadingChangedEventArgs ^ args) {
+void OS_UWP::ManagedType::on_gyroscope_reading_changed(Gyrometer ^ sender, GyrometerReadingChangedEventArgs ^ args) {
 
 	GyrometerReading ^ reading = args->Reading;
 
@@ -425,7 +476,7 @@ void OSUWP::ManagedType::on_gyroscope_reading_changed(Gyrometer ^ sender, Gyrome
 			reading->AngularVelocityZ));
 }
 
-void OSUWP::set_mouse_mode(MouseMode p_mode) {
+void OS_UWP::set_mouse_mode(MouseMode p_mode) {
 
 	if (p_mode == MouseMode::MOUSE_MODE_CAPTURED) {
 
@@ -450,41 +501,41 @@ void OSUWP::set_mouse_mode(MouseMode p_mode) {
 	SetEvent(mouse_mode_changed);
 }
 
-OSUWP::MouseMode OSUWP::get_mouse_mode() const {
+OS_UWP::MouseMode OS_UWP::get_mouse_mode() const {
 
 	return mouse_mode;
 }
 
-Point2 OSUWP::get_mouse_position() const {
+Point2 OS_UWP::get_mouse_position() const {
 
 	return Point2(old_x, old_y);
 }
 
-int OSUWP::get_mouse_button_state() const {
+int OS_UWP::get_mouse_button_state() const {
 
 	return last_button_state;
 }
 
-void OSUWP::set_window_title(const String &p_title) {
+void OS_UWP::set_window_title(const String &p_title) {
 }
 
-void OSUWP::set_video_mode(const VideoMode &p_video_mode, int p_screen) {
+void OS_UWP::set_video_mode(const VideoMode &p_video_mode, int p_screen) {
 
 	video_mode = p_video_mode;
 }
-OS::VideoMode OSUWP::get_video_mode(int p_screen) const {
+OS::VideoMode OS_UWP::get_video_mode(int p_screen) const {
 
 	return video_mode;
 }
-void OSUWP::get_fullscreen_mode_list(List<VideoMode> *p_list, int p_screen) const {
+void OS_UWP::get_fullscreen_mode_list(List<VideoMode> *p_list, int p_screen) const {
 }
 
-String OSUWP::get_name() {
+String OS_UWP::get_name() {
 
 	return "UWP";
 }
 
-OS::Date OSUWP::get_date(bool utc) const {
+OS::Date OS_UWP::get_date(bool utc) const {
 
 	SYSTEMTIME systemtime;
 	if (utc)
@@ -500,7 +551,7 @@ OS::Date OSUWP::get_date(bool utc) const {
 	date.dst = false;
 	return date;
 }
-OS::Time OSUWP::get_time(bool utc) const {
+OS::Time OS_UWP::get_time(bool utc) const {
 
 	SYSTEMTIME systemtime;
 	if (utc)
@@ -515,7 +566,7 @@ OS::Time OSUWP::get_time(bool utc) const {
 	return time;
 }
 
-OS::TimeZoneInfo OSUWP::get_time_zone_info() const {
+OS::TimeZoneInfo OS_UWP::get_time_zone_info() const {
 	TIME_ZONE_INFORMATION info;
 	bool daylight = false;
 	if (GetTimeZoneInformation(&info) == TIME_ZONE_ID_DAYLIGHT)
@@ -528,11 +579,13 @@ OS::TimeZoneInfo OSUWP::get_time_zone_info() const {
 		ret.name = info.StandardName;
 	}
 
-	ret.bias = info.Bias;
+	// Bias value returned by GetTimeZoneInformation is inverted of what we expect
+	// For example on GMT-3 GetTimeZoneInformation return a Bias of 180, so invert the value to get -180
+	ret.bias = -info.Bias;
 	return ret;
 }
 
-uint64_t OSUWP::get_unix_time() const {
+uint64_t OS_UWP::get_unix_time() const {
 
 	FILETIME ft;
 	SYSTEMTIME st;
@@ -554,14 +607,14 @@ uint64_t OSUWP::get_unix_time() const {
 	return (*(uint64_t *)&ft - *(uint64_t *)&fep) / 10000000;
 };
 
-void OSUWP::delay_usec(uint32_t p_usec) const {
+void OS_UWP::delay_usec(uint32_t p_usec) const {
 
 	int msec = p_usec < 1000 ? 1 : p_usec / 1000;
 
 	// no Sleep()
 	WaitForSingleObjectEx(GetCurrentThread(), msec, false);
 }
-uint64_t OSUWP::get_ticks_usec() const {
+uint64_t OS_UWP::get_ticks_usec() const {
 
 	uint64_t ticks;
 	uint64_t time;
@@ -575,13 +628,13 @@ uint64_t OSUWP::get_ticks_usec() const {
 	return time;
 }
 
-void OSUWP::process_events() {
+void OS_UWP::process_events() {
 
 	joypad->process_controllers();
 	process_key_events();
 }
 
-void OSUWP::process_key_events() {
+void OS_UWP::process_key_events() {
 
 	for (int i = 0; i < key_event_pos; i++) {
 
@@ -602,7 +655,7 @@ void OSUWP::process_key_events() {
 	key_event_pos = 0;
 }
 
-void OSUWP::queue_key_event(KeyEvent &p_event) {
+void OS_UWP::queue_key_event(KeyEvent &p_event) {
 	// This merges Char events with the previous Key event, so
 	// the unicode can be retrieved without sending duplicate events.
 	if (p_event.type == KeyEvent::MessageType::CHAR_EVENT_MESSAGE && key_event_pos > 0) {
@@ -619,7 +672,7 @@ void OSUWP::queue_key_event(KeyEvent &p_event) {
 	key_event_buffer[key_event_pos++] = p_event;
 }
 
-void OSUWP::set_cursor_shape(CursorShape p_shape) {
+void OS_UWP::set_cursor_shape(CursorShape p_shape) {
 
 	ERR_FAIL_INDEX(p_shape, CURSOR_MAX);
 
@@ -651,53 +704,62 @@ void OSUWP::set_cursor_shape(CursorShape p_shape) {
 	cursor_shape = p_shape;
 }
 
-Error OSUWP::execute(const String &p_path, const List<String> &p_arguments, bool p_blocking, ProcessID *r_child_id, String *r_pipe, int *r_exitcode, bool read_stderr) {
+void OS_UWP::set_custom_mouse_cursor(const RES &p_cursor, CursorShape p_shape, const Vector2 &p_hotspot) {
+	// TODO
+}
+
+Error OS_UWP::execute(const String &p_path, const List<String> &p_arguments, bool p_blocking, ProcessID *r_child_id, String *r_pipe, int *r_exitcode, bool read_stderr) {
 
 	return FAILED;
 };
 
-Error OSUWP::kill(const ProcessID &p_pid) {
+Error OS_UWP::kill(const ProcessID &p_pid) {
 
 	return FAILED;
 };
 
-Error OSUWP::set_cwd(const String &p_cwd) {
+Error OS_UWP::set_cwd(const String &p_cwd) {
 
 	return FAILED;
 }
 
-String OSUWP::get_executable_path() const {
+String OS_UWP::get_executable_path() const {
 
 	return "";
 }
 
-void OSUWP::set_icon(const Ref<Image> &p_icon) {
+void OS_UWP::set_icon(const Ref<Image> &p_icon) {
 }
 
-bool OSUWP::has_environment(const String &p_var) const {
+bool OS_UWP::has_environment(const String &p_var) const {
 
 	return false;
 };
 
-String OSUWP::get_environment(const String &p_var) const {
+String OS_UWP::get_environment(const String &p_var) const {
 
 	return "";
 };
 
-String OSUWP::get_stdin_string(bool p_block) {
+bool OS_UWP::set_environment(const String &p_var, const String &p_value) const {
+
+	return false;
+}
+
+String OS_UWP::get_stdin_string(bool p_block) {
 
 	return String();
 }
 
-void OSUWP::move_window_to_foreground() {
+void OS_UWP::move_window_to_foreground() {
 }
 
-Error OSUWP::shell_open(String p_uri) {
+Error OS_UWP::shell_open(String p_uri) {
 
 	return FAILED;
 }
 
-String OSUWP::get_locale() const {
+String OS_UWP::get_locale() const {
 
 #if WINAPI_FAMILY == WINAPI_FAMILY_PHONE_APP // this should work on phone 8.1, but it doesn't
 	return "en";
@@ -707,45 +769,90 @@ String OSUWP::get_locale() const {
 #endif
 }
 
-void OSUWP::release_rendering_thread() {
+void OS_UWP::release_rendering_thread() {
 
 	gl_context->release_current();
 }
 
-void OSUWP::make_rendering_thread() {
+void OS_UWP::make_rendering_thread() {
 
 	gl_context->make_current();
 }
 
-void OSUWP::swap_buffers() {
+void OS_UWP::swap_buffers() {
 
 	gl_context->swap_buffers();
 }
 
-bool OSUWP::has_touchscreen_ui_hint() const {
+bool OS_UWP::has_touchscreen_ui_hint() const {
 
 	TouchCapabilities ^ tc = ref new TouchCapabilities();
 	return tc->TouchPresent != 0 || UIViewSettings::GetForCurrentView()->UserInteractionMode == UserInteractionMode::Touch;
 }
 
-bool OSUWP::has_virtual_keyboard() const {
+bool OS_UWP::has_virtual_keyboard() const {
 
 	return UIViewSettings::GetForCurrentView()->UserInteractionMode == UserInteractionMode::Touch;
 }
 
-void OSUWP::show_virtual_keyboard(const String &p_existing_text, const Rect2 &p_screen_rect) {
+void OS_UWP::show_virtual_keyboard(const String &p_existing_text, const Rect2 &p_screen_rect) {
 
 	InputPane ^ pane = InputPane::GetForCurrentView();
 	pane->TryShow();
 }
 
-void OSUWP::hide_virtual_keyboard() {
+void OS_UWP::hide_virtual_keyboard() {
 
 	InputPane ^ pane = InputPane::GetForCurrentView();
 	pane->TryHide();
 }
 
-void OSUWP::run() {
+static String format_error_message(DWORD id) {
+
+	LPWSTR messageBuffer = NULL;
+	size_t size = FormatMessageW(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+			NULL, id, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPWSTR)&messageBuffer, 0, NULL);
+
+	String msg = "Error " + itos(id) + ": " + String(messageBuffer, size);
+
+	LocalFree(messageBuffer);
+
+	return msg;
+}
+
+Error OS_UWP::open_dynamic_library(const String p_path, void *&p_library_handle, bool p_also_set_library_path) {
+
+	String full_path = "game/" + p_path;
+	p_library_handle = (void *)LoadPackagedLibrary(full_path.c_str(), 0);
+
+	if (!p_library_handle) {
+		ERR_EXPLAIN("Can't open dynamic library: " + full_path + ". Error: " + format_error_message(GetLastError()));
+		ERR_FAIL_V(ERR_CANT_OPEN);
+	}
+	return OK;
+}
+
+Error OS_UWP::close_dynamic_library(void *p_library_handle) {
+	if (!FreeLibrary((HMODULE)p_library_handle)) {
+		return FAILED;
+	}
+	return OK;
+}
+
+Error OS_UWP::get_dynamic_library_symbol_handle(void *p_library_handle, const String p_name, void *&p_symbol_handle, bool p_optional) {
+	p_symbol_handle = (void *)GetProcAddress((HMODULE)p_library_handle, p_name.utf8().get_data());
+	if (!p_symbol_handle) {
+		if (!p_optional) {
+			ERR_EXPLAIN("Can't resolve symbol " + p_name + ". Error: " + String::num(GetLastError()));
+			ERR_FAIL_V(ERR_CANT_RESOLVE);
+		} else {
+			return ERR_CANT_RESOLVE;
+		}
+	}
+	return OK;
+}
+
+void OS_UWP::run() {
 
 	if (!main_loop)
 		return;
@@ -762,42 +869,42 @@ void OSUWP::run() {
 		CoreWindow::GetForCurrentThread()->Dispatcher->ProcessEvents(CoreProcessEventsOption::ProcessAllIfPresent);
 		if (managed_object->alert_close_handle) continue;
 		process_events(); // get rid of pending events
-		if (Main::iteration() == true)
+		if (Main::iteration())
 			break;
 	};
 
 	main_loop->finish();
 }
 
-MainLoop *OSUWP::get_main_loop() const {
+MainLoop *OS_UWP::get_main_loop() const {
 
 	return main_loop;
 }
 
-String OSUWP::get_user_data_dir() const {
+String OS_UWP::get_user_data_dir() const {
 
 	Windows::Storage::StorageFolder ^ data_folder = Windows::Storage::ApplicationData::Current->LocalFolder;
 
 	return String(data_folder->Path->Data()).replace("\\", "/");
 }
 
-bool OSUWP::_check_internal_feature_support(const String &p_feature) {
+bool OS_UWP::_check_internal_feature_support(const String &p_feature) {
 	return p_feature == "pc" || p_feature == "s3tc";
 }
 
-OS::PowerState OSUWP::get_power_state() {
+OS::PowerState OS_UWP::get_power_state() {
 	return power_manager->get_power_state();
 }
 
-int OSUWP::get_power_seconds_left() {
+int OS_UWP::get_power_seconds_left() {
 	return power_manager->get_power_seconds_left();
 }
 
-int OSUWP::get_power_percent_left() {
+int OS_UWP::get_power_percent_left() {
 	return power_manager->get_power_percent_left();
 }
 
-OSUWP::OSUWP() {
+OS_UWP::OS_UWP() {
 
 	key_event_pos = 0;
 	force_quit = false;
@@ -831,7 +938,7 @@ OSUWP::OSUWP() {
 	_set_logger(memnew(CompositeLogger(loggers)));
 }
 
-OSUWP::~OSUWP() {
+OS_UWP::~OS_UWP() {
 #ifdef STDOUT_FILE
 	fclose(stdo);
 #endif

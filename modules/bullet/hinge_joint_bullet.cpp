@@ -1,13 +1,12 @@
 /*************************************************************************/
 /*  hinge_joint_bullet.cpp                                               */
-/*  Author: AndreaCatania                                                */
 /*************************************************************************/
 /*                       This file is part of:                           */
 /*                           GODOT ENGINE                                */
-/*                    http://www.godotengine.org                         */
+/*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -30,19 +29,33 @@
 /*************************************************************************/
 
 #include "hinge_joint_bullet.h"
-#include "BulletDynamics/ConstraintSolver/btHingeConstraint.h"
+
 #include "bullet_types_converter.h"
 #include "bullet_utilities.h"
 #include "rigid_body_bullet.h"
 
+#include <BulletDynamics/ConstraintSolver/btHingeConstraint.h>
+
+/**
+	@author AndreaCatania
+*/
+
 HingeJointBullet::HingeJointBullet(RigidBodyBullet *rbA, RigidBodyBullet *rbB, const Transform &frameA, const Transform &frameB) :
 		JointBullet() {
+
+	Transform scaled_AFrame(frameA.scaled(rbA->get_body_scale()));
+	scaled_AFrame.basis.rotref_posscale_decomposition(scaled_AFrame.basis);
+
 	btTransform btFrameA;
-	G_TO_B(frameA, btFrameA);
+	G_TO_B(scaled_AFrame, btFrameA);
 
 	if (rbB) {
+
+		Transform scaled_BFrame(frameB.scaled(rbB->get_body_scale()));
+		scaled_BFrame.basis.rotref_posscale_decomposition(scaled_BFrame.basis);
+
 		btTransform btFrameB;
-		G_TO_B(frameB, btFrameB);
+		G_TO_B(scaled_BFrame, btFrameB);
 
 		hingeConstraint = bulletnew(btHingeConstraint(*rbA->get_bt_rigid_body(), *rbB->get_bt_rigid_body(), btFrameA, btFrameB));
 	} else {
@@ -58,14 +71,14 @@ HingeJointBullet::HingeJointBullet(RigidBodyBullet *rbA, RigidBodyBullet *rbB, c
 
 	btVector3 btPivotA;
 	btVector3 btAxisA;
-	G_TO_B(pivotInA, btPivotA);
-	G_TO_B(axisInA, btAxisA);
+	G_TO_B(pivotInA * rbA->get_body_scale(), btPivotA);
+	G_TO_B(axisInA * rbA->get_body_scale(), btAxisA);
 
 	if (rbB) {
 		btVector3 btPivotB;
 		btVector3 btAxisB;
-		G_TO_B(pivotInB, btPivotB);
-		G_TO_B(axisInB, btAxisB);
+		G_TO_B(pivotInB * rbB->get_body_scale(), btPivotB);
+		G_TO_B(axisInB * rbB->get_body_scale(), btAxisB);
 
 		hingeConstraint = bulletnew(btHingeConstraint(*rbA->get_bt_rigid_body(), *rbB->get_bt_rigid_body(), btPivotA, btPivotB, btAxisA, btAxisB));
 	} else {
@@ -82,11 +95,6 @@ real_t HingeJointBullet::get_hinge_angle() {
 
 void HingeJointBullet::set_param(PhysicsServer::HingeJointParam p_param, real_t p_value) {
 	switch (p_param) {
-		case PhysicsServer::HINGE_JOINT_BIAS:
-			if (0 < p_value) {
-				print_line("The Bullet Hinge Joint doesn't support bias, So it's always 0");
-			}
-			break;
 		case PhysicsServer::HINGE_JOINT_LIMIT_UPPER:
 			hingeConstraint->setLimit(hingeConstraint->getLowerLimit(), p_value, hingeConstraint->getLimitSoftness(), hingeConstraint->getLimitBiasFactor(), hingeConstraint->getLimitRelaxationFactor());
 			break;
@@ -109,7 +117,9 @@ void HingeJointBullet::set_param(PhysicsServer::HingeJointParam p_param, real_t 
 			hingeConstraint->setMaxMotorImpulse(p_value);
 			break;
 		default:
-			WARN_PRINTS("The Bullet Hinge Joint doesn't support this parameter: " + itos(p_param) + ", value: " + itos(p_value));
+			ERR_EXPLAIN("The HingeJoint parameter " + itos(p_param) + " is deprecated.");
+			WARN_DEPRECATED
+			break;
 	}
 }
 
@@ -133,7 +143,8 @@ real_t HingeJointBullet::get_param(PhysicsServer::HingeJointParam p_param) const
 		case PhysicsServer::HINGE_JOINT_MOTOR_MAX_IMPULSE:
 			return hingeConstraint->getMaxMotorImpulse();
 		default:
-			WARN_PRINTS("The Bullet Hinge Joint doesn't support this parameter: " + itos(p_param));
+			ERR_EXPLAIN("The HingeJoint parameter " + itos(p_param) + " is deprecated.");
+			WARN_DEPRECATED;
 			return 0;
 	}
 }
@@ -148,6 +159,7 @@ void HingeJointBullet::set_flag(PhysicsServer::HingeJointFlag p_flag, bool p_val
 		case PhysicsServer::HINGE_JOINT_FLAG_ENABLE_MOTOR:
 			hingeConstraint->enableMotor(p_value);
 			break;
+		case PhysicsServer::HINGE_JOINT_FLAG_MAX: break; // Can't happen, but silences warning
 	}
 }
 

@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,12 +27,14 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #ifndef THREAD_DUMMY_H
 #define THREAD_DUMMY_H
 
-#include "mutex.h"
-#include "semaphore.h"
-#include "thread.h"
+#include "core/os/mutex.h"
+#include "core/os/rw_lock.h"
+#include "core/os/semaphore.h"
+#include "core/os/thread.h"
 
 class ThreadDummy : public Thread {
 
@@ -64,6 +66,22 @@ public:
 	virtual Error wait() { return OK; };
 	virtual Error post() { return OK; };
 	virtual int get() const { return 0; }; ///< get semaphore value
+
+	static void make_default();
+};
+
+class RWLockDummy : public RWLock {
+
+	static RWLock *create();
+
+public:
+	virtual void read_lock() {}
+	virtual void read_unlock() {}
+	virtual Error read_try_lock() { return OK; }
+
+	virtual void write_lock() {}
+	virtual void write_unlock() {}
+	virtual Error write_try_lock() { return OK; }
 
 	static void make_default();
 };

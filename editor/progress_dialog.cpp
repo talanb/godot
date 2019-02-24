@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,18 +27,19 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #include "progress_dialog.h"
 
+#include "core/message_queue.h"
+#include "core/os/os.h"
 #include "editor_scale.h"
 #include "main/main.h"
-#include "message_queue.h"
-#include "os/os.h"
 
 void BackgroundProgress::_add_task(const String &p_task, const String &p_label, int p_steps) {
 
 	_THREAD_SAFE_METHOD_
 	ERR_FAIL_COND(tasks.has(p_task));
-	Task t;
+	BackgroundProgress::Task t;
 	t.hb = memnew(HBoxContainer);
 	Label *l = memnew(Label);
 	l->set_text(p_label + " ");
@@ -111,7 +112,7 @@ void BackgroundProgress::add_task(const String &p_task, const String &p_label, i
 void BackgroundProgress::task_step(const String &p_task, int p_step) {
 
 	//this code is weird, but it prevents deadlock.
-	bool no_updates;
+	bool no_updates = true;
 	{
 		_THREAD_SAFE_METHOD_
 		no_updates = updates.empty();
@@ -163,10 +164,15 @@ void ProgressDialog::_popup() {
 	popup_centered(ms);
 }
 
-void ProgressDialog::add_task(const String &p_task, const String &p_label, int p_steps) {
+void ProgressDialog::add_task(const String &p_task, const String &p_label, int p_steps, bool p_can_cancel) {
+
+	if (MessageQueue::get_singleton()->is_flushing()) {
+		ERR_PRINT("Do not use progress dialog (task) while flushing the message queue or using call_deferred()!");
+		return;
+	}
 
 	ERR_FAIL_COND(tasks.has(p_task));
-	Task t;
+	ProgressDialog::Task t;
 	t.vb = memnew(VBoxContainer);
 	VBoxContainer *vb2 = memnew(VBoxContainer);
 	t.vb->add_margin_child(p_label, vb2);
@@ -180,17 +186,27 @@ void ProgressDialog::add_task(const String &p_task, const String &p_label, int p
 	main->add_child(t.vb);
 
 	tasks[p_task] = t;
+	if (p_can_cancel) {
+		cancel_hb->show();
+	} else {
+		cancel_hb->hide();
+	}
+	cancel_hb->raise();
+	cancelled = false;
 	_popup();
+	if (p_can_cancel) {
+		cancel->grab_focus();
+	}
 }
 
-void ProgressDialog::task_step(const String &p_task, const String &p_state, int p_step, bool p_force_redraw) {
+bool ProgressDialog::task_step(const String &p_task, const String &p_state, int p_step, bool p_force_redraw) {
 
-	ERR_FAIL_COND(!tasks.has(p_task));
+	ERR_FAIL_COND_V(!tasks.has(p_task), cancelled);
 
 	if (!p_force_redraw) {
 		uint64_t tus = OS::get_singleton()->get_ticks_usec();
-		if (tus - last_progress_tick < 50000) //50ms
-			return;
+		if (tus - last_progress_tick < 200000) //200ms
+			return cancelled;
 	}
 
 	Task &t = tasks[p_task];
@@ -201,7 +217,11 @@ void ProgressDialog::task_step(const String &p_task, const String &p_state, int 
 
 	t.state->set_text(p_state);
 	last_progress_tick = OS::get_singleton()->get_ticks_usec();
+	if (cancel_hb->is_visible()) {
+		OS::get_singleton()->force_process_input();
+	}
 	Main::iteration(); // this will not work on a lot of platforms, so it's only meant for the editor
+	return cancelled;
 }
 
 void ProgressDialog::end_task(const String &p_task) {
@@ -218,6 +238,14 @@ void ProgressDialog::end_task(const String &p_task) {
 		_popup();
 }
 
+void ProgressDialog::_cancel_pressed() {
+	cancelled = true;
+}
+
+void ProgressDialog::_bind_methods() {
+	ClassDB::bind_method("_cancel_pressed", &ProgressDialog::_cancel_pressed);
+}
+
 ProgressDialog::ProgressDialog() {
 
 	main = memnew(VBoxContainer);
@@ -226,4 +254,13 @@ ProgressDialog::ProgressDialog() {
 	set_exclusive(true);
 	last_progress_tick = 0;
 	singleton = this;
+	cancel_hb = memnew(HBoxContainer);
+	main->add_child(cancel_hb);
+	cancel_hb->hide();
+	cancel = memnew(Button);
+	cancel_hb->add_spacer();
+	cancel_hb->add_child(cancel);
+	cancel->set_text(TTR("Cancel"));
+	cancel_hb->add_spacer();
+	cancel->connect("pressed", this, "_cancel_pressed");
 }

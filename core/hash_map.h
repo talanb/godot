@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,15 +27,16 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #ifndef HASH_MAP_H
 #define HASH_MAP_H
 
-#include "error_macros.h"
-#include "hashfuncs.h"
-#include "list.h"
-#include "math_funcs.h"
-#include "os/memory.h"
-#include "ustring.h"
+#include "core/error_macros.h"
+#include "core/hashfuncs.h"
+#include "core/list.h"
+#include "core/math/math_funcs.h"
+#include "core/os/memory.h"
+#include "core/ustring.h"
 
 /**
  * @class HashMap
@@ -149,7 +150,7 @@ private:
 		if (new_hash_table_power == -1)
 			return;
 
-		Element **new_hash_table = memnew_arr(Element *, (1 << new_hash_table_power));
+		Element **new_hash_table = memnew_arr(Element *, ((uint64_t)1 << new_hash_table_power));
 		if (!new_hash_table) {
 
 			ERR_PRINT("Out of Memory");
@@ -229,7 +230,7 @@ private:
 		if (!p_t.hash_table || p_t.hash_table_power == 0)
 			return; /* not copying from empty table */
 
-		hash_table = memnew_arr(Element *, 1 << p_t.hash_table_power);
+		hash_table = memnew_arr(Element *, (uint64_t)1 << p_t.hash_table_power);
 		hash_table_power = p_t.hash_table_power;
 		elements = p_t.elements;
 
@@ -313,7 +314,7 @@ public:
 
 	_FORCE_INLINE_ TData *getptr(const TKey &p_key) {
 
-		if (!hash_table)
+		if (unlikely(!hash_table))
 			return NULL;
 
 		Element *e = const_cast<Element *>(get_element(p_key));
@@ -326,7 +327,7 @@ public:
 
 	_FORCE_INLINE_ const TData *getptr(const TKey &p_key) const {
 
-		if (!hash_table)
+		if (unlikely(!hash_table))
 			return NULL;
 
 		const Element *e = const_cast<Element *>(get_element(p_key));
@@ -345,7 +346,7 @@ public:
 	template <class C>
 	_FORCE_INLINE_ TData *custom_getptr(C p_custom_key, uint32_t p_custom_hash) {
 
-		if (!hash_table)
+		if (unlikely(!hash_table))
 			return NULL;
 
 		uint32_t hash = p_custom_hash;
@@ -371,7 +372,7 @@ public:
 	template <class C>
 	_FORCE_INLINE_ const TData *custom_getptr(C p_custom_key, uint32_t p_custom_hash) const {
 
-		if (!hash_table)
+		if (unlikely(!hash_table))
 			return NULL;
 
 		uint32_t hash = p_custom_hash;
@@ -400,7 +401,7 @@ public:
 
 	bool erase(const TKey &p_key) {
 
-		if (!hash_table)
+		if (unlikely(!hash_table))
 			return false;
 
 		uint32_t hash = Hasher::hash(p_key);
@@ -478,7 +479,8 @@ public:
 	*/
 	const TKey *next(const TKey *p_key) const {
 
-		if (!hash_table) return NULL;
+		if (unlikely(!hash_table))
+			return NULL;
 
 		if (!p_key) { /* get the first key */
 
@@ -559,7 +561,7 @@ public:
 	}
 
 	void get_key_value_ptr_array(const Pair **p_pairs) const {
-		if (!hash_table)
+		if (unlikely(!hash_table))
 			return;
 		for (int i = 0; i < (1 << hash_table_power); i++) {
 
@@ -573,7 +575,7 @@ public:
 	}
 
 	void get_key_list(List<TKey> *p_keys) const {
-		if (!hash_table)
+		if (unlikely(!hash_table))
 			return;
 		for (int i = 0; i < (1 << hash_table_power); i++) {
 

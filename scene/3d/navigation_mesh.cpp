@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,6 +27,7 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #include "navigation_mesh.h"
 #include "mesh_instance.h"
 #include "navigation.h"
@@ -54,9 +55,9 @@ void NavigationMesh::create_from_mesh(const Ref<Mesh> &p_mesh) {
 		for (int j = 0; j < rlen; j += 3) {
 			Vector<int> vi;
 			vi.resize(3);
-			vi[0] = r[j + 0] + from;
-			vi[1] = r[j + 1] + from;
-			vi[2] = r[j + 2] + from;
+			vi.write[0] = r[j + 0] + from;
+			vi.write[1] = r[j + 1] + from;
+			vi.write[2] = r[j + 2] + from;
 
 			add_polygon(vi);
 		}
@@ -214,7 +215,7 @@ void NavigationMesh::_set_polygons(const Array &p_array) {
 
 	polygons.resize(p_array.size());
 	for (int i = 0; i < p_array.size(); i++) {
-		polygons[i].indices = p_array[i];
+		polygons.write[i].indices = p_array[i];
 	}
 }
 
@@ -291,11 +292,11 @@ Ref<Mesh> NavigationMesh::get_debug_mesh() {
 				if (ek.from < ek.to)
 					SWAP(ek.from, ek.to);
 
-				Map<_EdgeKey, bool>::Element *E = edge_map.find(ek);
+				Map<_EdgeKey, bool>::Element *F = edge_map.find(ek);
 
-				if (E) {
+				if (F) {
 
-					E->get() = false;
+					F->get() = false;
 
 				} else {
 
@@ -404,8 +405,8 @@ void NavigationMesh::_bind_methods() {
 	BIND_CONSTANT(SAMPLE_PARTITION_MONOTONE);
 	BIND_CONSTANT(SAMPLE_PARTITION_LAYERS);
 
-	ADD_PROPERTY(PropertyInfo(Variant::POOL_VECTOR3_ARRAY, "vertices", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NOEDITOR), "set_vertices", "get_vertices");
-	ADD_PROPERTY(PropertyInfo(Variant::ARRAY, "polygons", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NOEDITOR), "_set_polygons", "_get_polygons");
+	ADD_PROPERTY(PropertyInfo(Variant::POOL_VECTOR3_ARRAY, "vertices", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NOEDITOR | PROPERTY_USAGE_INTERNAL), "set_vertices", "get_vertices");
+	ADD_PROPERTY(PropertyInfo(Variant::ARRAY, "polygons", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NOEDITOR | PROPERTY_USAGE_INTERNAL), "_set_polygons", "_get_polygons");
 
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "sample_partition_type/sample_partition_type", PROPERTY_HINT_ENUM, "Watershed,Monotone,Layers"), "set_sample_partition_type", "get_sample_partition_type");
 
@@ -471,7 +472,7 @@ void NavigationMeshInstance::set_enabled(bool p_enabled) {
 
 			if (navmesh.is_valid()) {
 
-				nav_id = navigation->navmesh_create(navmesh, get_relative_transform(navigation), this);
+				nav_id = navigation->navmesh_add(navmesh, get_relative_transform(navigation), this);
 			}
 		}
 	}
@@ -508,7 +509,7 @@ void NavigationMeshInstance::_notification(int p_what) {
 
 					if (enabled && navmesh.is_valid()) {
 
-						nav_id = navigation->navmesh_create(navmesh, get_relative_transform(navigation), this);
+						nav_id = navigation->navmesh_add(navmesh, get_relative_transform(navigation), this);
 					}
 					break;
 				}
@@ -568,7 +569,7 @@ void NavigationMeshInstance::set_navigation_mesh(const Ref<NavigationMesh> &p_na
 	navmesh = p_navmesh;
 
 	if (navigation && navmesh.is_valid() && enabled) {
-		nav_id = navigation->navmesh_create(navmesh, get_relative_transform(navigation), this);
+		nav_id = navigation->navmesh_add(navmesh, get_relative_transform(navigation), this);
 	}
 
 	if (debug_view && navmesh.is_valid()) {

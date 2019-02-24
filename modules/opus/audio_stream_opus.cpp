@@ -5,10 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
-/*                                                                       */
-/* Author: George Marques <george@gmarqu.es>                             */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -29,7 +27,12 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #include "audio_stream_opus.h"
+
+/**
+	@author George Marques <george@gmarqu.es>
+*/
 
 const float AudioStreamPlaybackOpus::osrate = 48000.0f;
 
@@ -139,7 +142,7 @@ Error AudioStreamPlaybackOpus::_load_stream() {
 		} break;
 		case OP_EBADLINK: // - Failed to find old data after seeking.
 		case OP_EBADTIMESTAMP: // - Timestamp failed the validity checks.
-		case OP_EBADHEADER: { // - Invalid or mising Opus bitstream header.
+		case OP_EBADHEADER: { // - Invalid or missing Opus bitstream header.
 			memdelete(f);
 			f = NULL;
 			ERR_FAIL_V(ERR_FILE_CORRUPT);
@@ -205,7 +208,7 @@ Error AudioStreamPlaybackOpus::set_file(const String &p_file) {
 		} break;
 		case OP_EBADLINK: // - Failed to find old data after seeking.
 		case OP_EBADTIMESTAMP: // - Timestamp failed the validity checks.
-		case OP_EBADHEADER: { // - Invalid or mising Opus bitstream header.
+		case OP_EBADHEADER: { // - Invalid or missing Opus bitstream header.
 			memdelete(f);
 			f = NULL;
 			ERR_FAIL_V(ERR_FILE_CORRUPT);

@@ -1,13 +1,12 @@
 /*************************************************************************/
 /*  shape_bullet.h                                                       */
-/*  Author: AndreaCatania                                                */
 /*************************************************************************/
 /*                       This file is part of:                           */
 /*                           GODOT ENGINE                                */
-/*                    http://www.godotengine.org                         */
+/*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -32,13 +31,18 @@
 #ifndef SHAPE_BULLET_H
 #define SHAPE_BULLET_H
 
-#include "LinearMath/btAlignedObjectArray.h"
-#include "LinearMath/btScalar.h"
-#include "LinearMath/btVector3.h"
+#include "core/math/geometry.h"
 #include "core/variant.h"
-#include "geometry.h"
 #include "rid_bullet.h"
 #include "servers/physics_server.h"
+
+#include <LinearMath/btAlignedObjectArray.h>
+#include <LinearMath/btScalar.h>
+#include <LinearMath/btVector3.h>
+
+/**
+	@author AndreaCatania
+*/
 
 class ShapeBullet;
 class btCollisionShape;
@@ -48,6 +52,7 @@ class btBvhTriangleMeshShape;
 class ShapeBullet : public RIDBullet {
 
 	Map<ShapeOwnerBullet *, int> owners;
+	real_t margin;
 
 protected:
 	/// return self
@@ -58,12 +63,16 @@ public:
 	ShapeBullet();
 	virtual ~ShapeBullet();
 
-	virtual btCollisionShape *create_bt_shape() = 0;
+	btCollisionShape *create_bt_shape(const Vector3 &p_implicit_scale, real_t p_extra_edge = 0);
+	virtual btCollisionShape *create_bt_shape(const btVector3 &p_implicit_scale, real_t p_extra_edge = 0) = 0;
 
 	void add_owner(ShapeOwnerBullet *p_owner);
 	void remove_owner(ShapeOwnerBullet *p_owner, bool p_permanentlyFromThisBody = false);
 	bool is_owner(ShapeOwnerBullet *p_owner) const;
 	const Map<ShapeOwnerBullet *, int> &get_owners() const;
+
+	void set_margin(real_t p_margin);
+	real_t get_margin() const;
 
 	/// Setup the shape
 	virtual void set_data(const Variant &p_data) = 0;
@@ -77,11 +86,12 @@ public:
 	static class btSphereShape *create_shape_sphere(btScalar radius);
 	static class btBoxShape *create_shape_box(const btVector3 &boxHalfExtents);
 	static class btCapsuleShapeZ *create_shape_capsule(btScalar radius, btScalar height);
+	static class btCylinderShape *create_shape_cylinder(btScalar radius, btScalar height);
 	/// IMPORTANT: Remember to delete the shape interface by calling: delete my_shape->getMeshInterface();
 	static class btConvexPointCloudShape *create_shape_convex(btAlignedObjectArray<btVector3> &p_vertices, const btVector3 &p_local_scaling = btVector3(1, 1, 1));
 	static class btScaledBvhTriangleMeshShape *create_shape_concave(btBvhTriangleMeshShape *p_mesh_shape, const btVector3 &p_local_scaling = btVector3(1, 1, 1));
-	static class btHeightfieldTerrainShape *create_shape_height_field(PoolVector<real_t> &p_heights, int p_width, int p_depth, real_t p_cell_size);
-	static class btRayShape *create_shape_ray(real_t p_length);
+	static class btHeightfieldTerrainShape *create_shape_height_field(PoolVector<real_t> &p_heights, int p_width, int p_depth, real_t p_min_height, real_t p_max_height);
+	static class btRayShape *create_shape_ray(real_t p_length, bool p_slips_on_slope);
 };
 
 class PlaneShapeBullet : public ShapeBullet {
@@ -94,7 +104,7 @@ public:
 	virtual void set_data(const Variant &p_data);
 	virtual Variant get_data() const;
 	virtual PhysicsServer::ShapeType get_type() const;
-	virtual btCollisionShape *create_bt_shape();
+	virtual btCollisionShape *create_bt_shape(const btVector3 &p_implicit_scale, real_t p_extra_edge = 0);
 
 private:
 	void setup(const Plane &p_plane);
@@ -111,7 +121,7 @@ public:
 	virtual void set_data(const Variant &p_data);
 	virtual Variant get_data() const;
 	virtual PhysicsServer::ShapeType get_type() const;
-	virtual btCollisionShape *create_bt_shape();
+	virtual btCollisionShape *create_bt_shape(const btVector3 &p_implicit_scale, real_t p_extra_edge = 0);
 
 private:
 	void setup(real_t p_radius);
@@ -128,7 +138,7 @@ public:
 	virtual void set_data(const Variant &p_data);
 	virtual Variant get_data() const;
 	virtual PhysicsServer::ShapeType get_type() const;
-	virtual btCollisionShape *create_bt_shape();
+	virtual btCollisionShape *create_bt_shape(const btVector3 &p_implicit_scale, real_t p_extra_edge = 0);
 
 private:
 	void setup(const Vector3 &p_half_extents);
@@ -147,7 +157,26 @@ public:
 	virtual void set_data(const Variant &p_data);
 	virtual Variant get_data() const;
 	virtual PhysicsServer::ShapeType get_type() const;
-	virtual btCollisionShape *create_bt_shape();
+	virtual btCollisionShape *create_bt_shape(const btVector3 &p_implicit_scale, real_t p_extra_edge = 0);
+
+private:
+	void setup(real_t p_height, real_t p_radius);
+};
+
+class CylinderShapeBullet : public ShapeBullet {
+
+	real_t height;
+	real_t radius;
+
+public:
+	CylinderShapeBullet();
+
+	_FORCE_INLINE_ real_t get_height() { return height; }
+	_FORCE_INLINE_ real_t get_radius() { return radius; }
+	virtual void set_data(const Variant &p_data);
+	virtual Variant get_data() const;
+	virtual PhysicsServer::ShapeType get_type() const;
+	virtual btCollisionShape *create_bt_shape(const btVector3 &p_implicit_scale, real_t p_margin = 0);
 
 private:
 	void setup(real_t p_height, real_t p_radius);
@@ -164,7 +193,7 @@ public:
 	void get_vertices(Vector<Vector3> &out_vertices);
 	virtual Variant get_data() const;
 	virtual PhysicsServer::ShapeType get_type() const;
-	virtual btCollisionShape *create_bt_shape();
+	virtual btCollisionShape *create_bt_shape(const btVector3 &p_implicit_scale, real_t p_extra_edge = 0);
 
 private:
 	void setup(const Vector<Vector3> &p_vertices);
@@ -182,7 +211,7 @@ public:
 	virtual void set_data(const Variant &p_data);
 	virtual Variant get_data() const;
 	virtual PhysicsServer::ShapeType get_type() const;
-	virtual btCollisionShape *create_bt_shape();
+	virtual btCollisionShape *create_bt_shape(const btVector3 &p_implicit_scale, real_t p_extra_edge = 0);
 
 private:
 	void setup(PoolVector<Vector3> p_faces);
@@ -194,32 +223,34 @@ public:
 	PoolVector<real_t> heights;
 	int width;
 	int depth;
-	real_t cell_size;
+	real_t min_height;
+	real_t max_height;
 
 	HeightMapShapeBullet();
 
 	virtual void set_data(const Variant &p_data);
 	virtual Variant get_data() const;
 	virtual PhysicsServer::ShapeType get_type() const;
-	virtual btCollisionShape *create_bt_shape();
+	virtual btCollisionShape *create_bt_shape(const btVector3 &p_implicit_scale, real_t p_extra_edge = 0);
 
 private:
-	void setup(PoolVector<real_t> &p_heights, int p_width, int p_depth, real_t p_cell_size);
+	void setup(PoolVector<real_t> &p_heights, int p_width, int p_depth, real_t p_min_height, real_t p_max_height);
 };
 
 class RayShapeBullet : public ShapeBullet {
 
 public:
 	real_t length;
+	bool slips_on_slope;
 
 	RayShapeBullet();
 
 	virtual void set_data(const Variant &p_data);
 	virtual Variant get_data() const;
 	virtual PhysicsServer::ShapeType get_type() const;
-	virtual btCollisionShape *create_bt_shape();
+	virtual btCollisionShape *create_bt_shape(const btVector3 &p_implicit_scale, real_t p_extra_edge = 0);
 
 private:
-	void setup(real_t p_length);
+	void setup(real_t p_length, bool p_slips_on_slope);
 };
 #endif

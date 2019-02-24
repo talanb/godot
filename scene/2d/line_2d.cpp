@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,10 +27,11 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #include "line_2d.h"
 #include "line_builder.h"
 
-#include "core_string_names.h"
+#include "core/core_string_names.h"
 
 // Needed so we can bind functions
 VARIANT_ENUM_CAST(Line2D::LineJointMode)
@@ -46,6 +47,36 @@ Line2D::Line2D() :
 	_default_color = Color(0.4, 0.5, 1);
 	_sharp_limit = 2.f;
 	_round_precision = 8;
+}
+
+Rect2 Line2D::_edit_get_rect() const {
+
+	if (_points.size() == 0)
+		return Rect2(0, 0, 0, 0);
+	Vector2 d = Vector2(_width, _width);
+	Rect2 aabb = Rect2(_points[0] - d, 2 * d);
+	for (int i = 1; i < _points.size(); i++) {
+		aabb.expand_to(_points[i] - d);
+		aabb.expand_to(_points[i] + d);
+	}
+	return aabb;
+}
+
+bool Line2D::_edit_use_rect() const {
+	return true;
+}
+
+bool Line2D::_edit_is_selected_on_click(const Point2 &p_point, double p_tolerance) const {
+
+	const real_t d = _width / 2 + p_tolerance;
+	PoolVector<Vector2>::Read points = _points.read();
+	for (int i = 0; i < _points.size() - 1; i++) {
+		Vector2 p = Geometry::get_closest_point_to_segment_2d(p_point, &points[i]);
+		if (p.distance_to(p_point) <= d)
+			return true;
+	}
+
+	return false;
 }
 
 void Line2D::set_points(const PoolVector<Vector2> &p_points) {
@@ -208,7 +239,7 @@ void Line2D::_draw() {
 	{
 		PoolVector<Vector2>::Read points_read = _points.read();
 		for (int i = 0; i < len; ++i) {
-			points[i] = points_read[i];
+			points.write[i] = points_read[i];
 		}
 	}
 
@@ -225,18 +256,22 @@ void Line2D::_draw() {
 	lb.sharp_limit = _sharp_limit;
 	lb.width = _width;
 
-	lb.build();
-
 	RID texture_rid;
-	if (_texture.is_valid())
+	if (_texture.is_valid()) {
 		texture_rid = (**_texture).get_rid();
+
+		lb.tile_aspect = _texture->get_size().aspect();
+	}
+
+	lb.build();
 
 	VS::get_singleton()->canvas_item_add_triangle_array(
 			get_canvas_item(),
 			lb.indices,
 			lb.vertices,
 			lb.colors,
-			lb.uvs,
+			lb.uvs, Vector<int>(), Vector<float>(),
+
 			texture_rid);
 
 	// DEBUG
@@ -312,13 +347,13 @@ void Line2D::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::REAL, "width"), "set_width", "get_width");
 	ADD_PROPERTY(PropertyInfo(Variant::COLOR, "default_color"), "set_default_color", "get_default_color");
 	ADD_GROUP("Fill", "");
-	ADD_PROPERTYNZ(PropertyInfo(Variant::OBJECT, "gradient", PROPERTY_HINT_RESOURCE_TYPE, "Gradient"), "set_gradient", "get_gradient");
-	ADD_PROPERTYNZ(PropertyInfo(Variant::OBJECT, "texture", PROPERTY_HINT_RESOURCE_TYPE, "Texture"), "set_texture", "get_texture");
-	ADD_PROPERTYNZ(PropertyInfo(Variant::INT, "texture_mode", PROPERTY_HINT_ENUM, "None,Tile"), "set_texture_mode", "get_texture_mode");
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "gradient", PROPERTY_HINT_RESOURCE_TYPE, "Gradient"), "set_gradient", "get_gradient");
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "texture", PROPERTY_HINT_RESOURCE_TYPE, "Texture"), "set_texture", "get_texture");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "texture_mode", PROPERTY_HINT_ENUM, "None,Tile,Stretch"), "set_texture_mode", "get_texture_mode");
 	ADD_GROUP("Capping", "");
-	ADD_PROPERTYNZ(PropertyInfo(Variant::INT, "joint_mode", PROPERTY_HINT_ENUM, "Sharp,Bevel,Round"), "set_joint_mode", "get_joint_mode");
-	ADD_PROPERTYNZ(PropertyInfo(Variant::INT, "begin_cap_mode", PROPERTY_HINT_ENUM, "None,Box,Round"), "set_begin_cap_mode", "get_begin_cap_mode");
-	ADD_PROPERTYNZ(PropertyInfo(Variant::INT, "end_cap_mode", PROPERTY_HINT_ENUM, "None,Box,Round"), "set_end_cap_mode", "get_end_cap_mode");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "joint_mode", PROPERTY_HINT_ENUM, "Sharp,Bevel,Round"), "set_joint_mode", "get_joint_mode");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "begin_cap_mode", PROPERTY_HINT_ENUM, "None,Box,Round"), "set_begin_cap_mode", "get_begin_cap_mode");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "end_cap_mode", PROPERTY_HINT_ENUM, "None,Box,Round"), "set_end_cap_mode", "get_end_cap_mode");
 	ADD_GROUP("Border", "");
 	ADD_PROPERTY(PropertyInfo(Variant::REAL, "sharp_limit"), "set_sharp_limit", "get_sharp_limit");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "round_precision"), "set_round_precision", "get_round_precision");
@@ -333,6 +368,7 @@ void Line2D::_bind_methods() {
 
 	BIND_ENUM_CONSTANT(LINE_TEXTURE_NONE);
 	BIND_ENUM_CONSTANT(LINE_TEXTURE_TILE);
+	BIND_ENUM_CONSTANT(LINE_TEXTURE_STRETCH);
 
 	ClassDB::bind_method(D_METHOD("_gradient_changed"), &Line2D::_gradient_changed);
 }

@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,11 +27,12 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #include "visual_server_viewport.h"
 
-#include "project_settings.h"
+#include "core/project_settings.h"
 #include "visual_server_canvas.h"
-#include "visual_server_global.h"
+#include "visual_server_globals.h"
 #include "visual_server_scene.h"
 
 void VisualServerViewport::_draw_viewport(Viewport *p_viewport, ARVRInterface::Eyes p_eye) {
@@ -96,7 +97,7 @@ void VisualServerViewport::_draw_viewport(Viewport *p_viewport, ARVRInterface::E
 				RasterizerCanvas::Light *cl = F->get();
 				if (cl->enabled && cl->texture.is_valid()) {
 					//not super efficient..
-					Size2 tsize(VSG::storage->texture_get_width(cl->texture), VSG::storage->texture_get_height(cl->texture));
+					Size2 tsize = VSG::storage->texture_size_with_proxy(cl->texture);
 					tsize *= cl->scale;
 
 					Vector2 offset = tsize / 2.0;
@@ -136,8 +137,7 @@ void VisualServerViewport::_draw_viewport(Viewport *p_viewport, ARVRInterface::E
 				}
 			}
 
-			//print_line("lights: "+itos(light_count));
-			canvas_map[Viewport::CanvasKey(E->key(), E->get().layer)] = &E->get();
+			canvas_map[Viewport::CanvasKey(E->key(), E->get().layer, E->get().sublayer)] = &E->get();
 		}
 
 		if (lights_with_shadow) {
@@ -176,12 +176,15 @@ void VisualServerViewport::_draw_viewport(Viewport *p_viewport, ARVRInterface::E
 
 		VSG::rasterizer->restore_render_target();
 
-		if (scenario_draw_canvas_bg && canvas_map.front() && canvas_map.front()->key().layer > scenario_canvas_max_layer) {
+		if (scenario_draw_canvas_bg && canvas_map.front() && canvas_map.front()->key().get_layer() > scenario_canvas_max_layer) {
+			Ref<ARVRInterface> arvr_interface = ARVRServer::get_singleton()->get_primary_interface();
 
-			if (can_draw_3d) {
-				VSG::scene->render_camera(p_viewport->camera, p_viewport->scenario, p_viewport->size, p_viewport->shadow_atlas);
-			} else {
+			if (!can_draw_3d) {
 				VSG::scene->render_empty_scene(p_viewport->scenario, p_viewport->shadow_atlas);
+			} else if (p_viewport->use_arvr && arvr_interface.is_valid()) {
+				VSG::scene->render_camera(arvr_interface, p_eye, p_viewport->camera, p_viewport->scenario, p_viewport->size, p_viewport->shadow_atlas);
+			} else {
+				VSG::scene->render_camera(p_viewport->camera, p_viewport->scenario, p_viewport->size, p_viewport->shadow_atlas);
 			}
 			scenario_draw_canvas_bg = false;
 		}
@@ -190,8 +193,6 @@ void VisualServerViewport::_draw_viewport(Viewport *p_viewport, ARVRInterface::E
 
 			VisualServerCanvas::Canvas *canvas = static_cast<VisualServerCanvas::Canvas *>(E->get()->canvas);
 
-			//print_line("canvas "+itos(i)+" size: "+itos(I->get()->canvas->child_items.size()));
-			//print_line("GT "+p_viewport->global_transform+". CT: "+E->get()->transform);
 			Transform2D xform = p_viewport->global_transform * E->get()->transform;
 
 			RasterizerCanvas::Light *canvas_lights = NULL;
@@ -208,12 +209,15 @@ void VisualServerViewport::_draw_viewport(Viewport *p_viewport, ARVRInterface::E
 			VSG::canvas->render_canvas(canvas, xform, canvas_lights, lights_with_mask, clip_rect);
 			i++;
 
-			if (scenario_draw_canvas_bg && E->key().layer >= scenario_canvas_max_layer) {
+			if (scenario_draw_canvas_bg && E->key().get_layer() >= scenario_canvas_max_layer) {
+				Ref<ARVRInterface> arvr_interface = ARVRServer::get_singleton()->get_primary_interface();
 
-				if (can_draw_3d) {
-					VSG::scene->render_camera(p_viewport->camera, p_viewport->scenario, p_viewport->size, p_viewport->shadow_atlas);
-				} else {
+				if (!can_draw_3d) {
 					VSG::scene->render_empty_scene(p_viewport->scenario, p_viewport->shadow_atlas);
+				} else if (p_viewport->use_arvr && arvr_interface.is_valid()) {
+					VSG::scene->render_camera(arvr_interface, p_eye, p_viewport->camera, p_viewport->scenario, p_viewport->size, p_viewport->shadow_atlas);
+				} else {
+					VSG::scene->render_camera(p_viewport->camera, p_viewport->scenario, p_viewport->size, p_viewport->shadow_atlas);
 				}
 
 				scenario_draw_canvas_bg = false;
@@ -221,11 +225,14 @@ void VisualServerViewport::_draw_viewport(Viewport *p_viewport, ARVRInterface::E
 		}
 
 		if (scenario_draw_canvas_bg) {
+			Ref<ARVRInterface> arvr_interface = ARVRServer::get_singleton()->get_primary_interface();
 
-			if (can_draw_3d) {
-				VSG::scene->render_camera(p_viewport->camera, p_viewport->scenario, p_viewport->size, p_viewport->shadow_atlas);
-			} else {
+			if (!can_draw_3d) {
 				VSG::scene->render_empty_scene(p_viewport->scenario, p_viewport->shadow_atlas);
+			} else if (p_viewport->use_arvr && arvr_interface.is_valid()) {
+				VSG::scene->render_camera(arvr_interface, p_eye, p_viewport->camera, p_viewport->scenario, p_viewport->size, p_viewport->shadow_atlas);
+			} else {
+				VSG::scene->render_camera(p_viewport->camera, p_viewport->scenario, p_viewport->size, p_viewport->shadow_atlas);
 			}
 
 			scenario_draw_canvas_bg = false;
@@ -238,12 +245,13 @@ void VisualServerViewport::_draw_viewport(Viewport *p_viewport, ARVRInterface::E
 void VisualServerViewport::draw_viewports() {
 	// get our arvr interface in case we need it
 	Ref<ARVRInterface> arvr_interface = ARVRServer::get_singleton()->get_primary_interface();
-	if (arvr_interface.is_valid()) {
-		// update our positioning information as late as possible...
-		arvr_interface->process();
-	}
 
-	clear_color = GLOBAL_GET("rendering/environment/default_clear_color");
+	// process all our active interfaces
+	ARVRServer::get_singleton()->_process();
+
+	if (Engine::get_singleton()->is_editor_hint()) {
+		clear_color = GLOBAL_GET("rendering/environment/default_clear_color");
+	}
 
 	//sort viewports
 	active_viewports.sort_custom<ViewportSort>();
@@ -259,7 +267,7 @@ void VisualServerViewport::draw_viewports() {
 		ERR_CONTINUE(!vp->render_target.is_valid());
 
 		bool visible = vp->viewport_to_screen_rect != Rect2() || vp->update_mode == VS::VIEWPORT_UPDATE_ALWAYS || vp->update_mode == VS::VIEWPORT_UPDATE_ONCE || (vp->update_mode == VS::VIEWPORT_UPDATE_WHEN_VISIBLE && VSG::storage->render_target_was_used(vp->render_target));
-		visible = visible && vp->size.x > 0 && vp->size.y > 0;
+		visible = visible && vp->size.x > 1 && vp->size.y > 1;
 
 		if (!visible)
 			continue;
@@ -285,6 +293,9 @@ void VisualServerViewport::draw_viewports() {
 				_draw_viewport(vp, ARVRInterface::EYE_RIGHT);
 				arvr_interface->commit_for_eye(ARVRInterface::EYE_RIGHT, vp->render_target, vp->viewport_to_screen_rect);
 			}
+
+			// and for our frame timing, mark when we've finished committing our eyes
+			ARVRServer::get_singleton()->_mark_commit();
 		} else {
 			VSG::rasterizer->set_current_render_target(vp->render_target);
 
@@ -450,6 +461,15 @@ void VisualServerViewport::viewport_set_disable_3d(RID p_viewport, bool p_disabl
 	//this should be just for disabling rendering of 3D, to actually disable it, set usage
 }
 
+void VisualServerViewport::viewport_set_keep_3d_linear(RID p_viewport, bool p_keep_3d_linear) {
+
+	Viewport *viewport = viewport_owner.getornull(p_viewport);
+	ERR_FAIL_COND(!viewport);
+
+	viewport->keep_3d_linear = p_keep_3d_linear;
+	VSG::storage->render_target_set_flag(viewport->render_target, RasterizerStorage::RENDER_TARGET_KEEP_3D_LINEAR, p_keep_3d_linear);
+}
+
 void VisualServerViewport::viewport_attach_camera(RID p_viewport, RID p_camera) {
 
 	Viewport *viewport = viewport_owner.getornull(p_viewport);
@@ -476,6 +496,7 @@ void VisualServerViewport::viewport_attach_canvas(RID p_viewport, RID p_canvas) 
 	canvas->viewports.insert(p_viewport);
 	viewport->canvas_map[p_canvas] = Viewport::CanvasData();
 	viewport->canvas_map[p_canvas].layer = 0;
+	viewport->canvas_map[p_canvas].sublayer = 0;
 	viewport->canvas_map[p_canvas].canvas = canvas;
 }
 
@@ -504,7 +525,7 @@ void VisualServerViewport::viewport_set_transparent_background(RID p_viewport, b
 	ERR_FAIL_COND(!viewport);
 
 	VSG::storage->render_target_set_flag(viewport->render_target, RasterizerStorage::RENDER_TARGET_TRANSPARENT, p_enabled);
-	viewport->transparent_bg = true;
+	viewport->transparent_bg = p_enabled;
 }
 
 void VisualServerViewport::viewport_set_global_canvas_transform(RID p_viewport, const Transform2D &p_transform) {
@@ -514,13 +535,14 @@ void VisualServerViewport::viewport_set_global_canvas_transform(RID p_viewport, 
 
 	viewport->global_transform = p_transform;
 }
-void VisualServerViewport::viewport_set_canvas_layer(RID p_viewport, RID p_canvas, int p_layer) {
+void VisualServerViewport::viewport_set_canvas_stacking(RID p_viewport, RID p_canvas, int p_layer, int p_sublayer) {
 
 	Viewport *viewport = viewport_owner.getornull(p_viewport);
 	ERR_FAIL_COND(!viewport);
 
 	ERR_FAIL_COND(!viewport->canvas_map.has(p_canvas));
 	viewport->canvas_map[p_canvas].layer = p_layer;
+	viewport->canvas_map[p_canvas].sublayer = p_sublayer;
 }
 
 void VisualServerViewport::viewport_set_shadow_atlas_size(RID p_viewport, int p_size) {
@@ -637,6 +659,10 @@ bool VisualServerViewport::free(RID p_rid) {
 	}
 
 	return false;
+}
+
+void VisualServerViewport::set_default_clear_color(const Color &p_color) {
+	clear_color = p_color;
 }
 
 VisualServerViewport::VisualServerViewport() {

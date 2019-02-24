@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,6 +27,7 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #ifndef GODOT_GDNATIVE_H
 #define GODOT_GDNATIVE_H
 
@@ -34,7 +35,7 @@
 extern "C" {
 #endif
 
-#ifdef _WIN32
+#if defined(_WIN32) || defined(__ANDROID__)
 #define GDCALLINGCONV
 #define GDAPI GDCALLINGCONV
 #elif defined(__APPLE__)
@@ -46,7 +47,7 @@ extern "C" {
 #define GDCALLINGCONV __attribute__((sysv_abi))
 #define GDAPI GDCALLINGCONV
 #endif
-#else
+#else // !_WIN32 && !__APPLE__
 #define GDCALLINGCONV __attribute__((sysv_abi))
 #define GDAPI GDCALLINGCONV
 #endif
@@ -69,7 +70,7 @@ typedef enum {
 	GODOT_OK,
 	GODOT_FAILED, ///< Generic fail error
 	GODOT_ERR_UNAVAILABLE, ///< What is requested is unsupported/unavailable
-	GODOT_ERR_UNCONFIGURED, ///< The object being used hasnt been properly set up yet
+	GODOT_ERR_UNCONFIGURED, ///< The object being used hasn't been properly set up yet
 	GODOT_ERR_UNAUTHORIZED, ///< Missing credentials for requested resource
 	GODOT_ERR_PARAMETER_RANGE_ERROR, ///< Parameter given out of range (5)
 	GODOT_ERR_OUT_OF_MEMORY, ///< Out of memory
@@ -212,10 +213,6 @@ void GDAPI godot_object_destroy(godot_object *p_o);
 
 godot_object GDAPI *godot_global_get_singleton(char *p_name); // result shouldn't be freed
 
-////// OS API
-
-void GDAPI *godot_get_stack_bottom(); //  returns stack bottom of the main thread
-
 ////// MethodBind API
 
 typedef struct {
@@ -284,6 +281,10 @@ void GDAPI godot_free(void *p_ptr);
 void GDAPI godot_print_error(const char *p_description, const char *p_function, const char *p_file, int p_line);
 void GDAPI godot_print_warning(const char *p_description, const char *p_function, const char *p_file, int p_line);
 void GDAPI godot_print(const godot_string *p_message);
+
+// GDNATIVE CORE 1.0.1
+
+bool GDAPI godot_is_instance_valid(const godot_object *p_object);
 
 #ifdef __cplusplus
 }

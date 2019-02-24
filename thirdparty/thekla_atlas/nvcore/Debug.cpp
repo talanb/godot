@@ -14,18 +14,18 @@
 #   define VC_EXTRALEAN
 #   include <windows.h>
 #   include <direct.h>
-#   if NV_CC_MSVC
-#       include <crtdbg.h>
-#       if _MSC_VER < 1300
-#           define DECLSPEC_DEPRECATED
+// -- GODOT start -
+#   include <crtdbg.h>
+#   if _MSC_VER < 1300
+#       define DECLSPEC_DEPRECATED
 // VC6: change this path to your Platform SDK headers
-#           include <dbghelp.h> // must be XP version of file
-//          include "M:\\dev7\\vs\\devtools\\common\\win32sdk\\include\\dbghelp.h"
-#       else
+#       include <dbghelp.h> // must be XP version of file
+//      include "M:\\dev7\\vs\\devtools\\common\\win32sdk\\include\\dbghelp.h"
+#   else
 // VC7: ships with updated headers
-#           include <dbghelp.h>
-#       endif
+#       include <dbghelp.h>
 #   endif
+// -- GODOT end -
 #   pragma comment(lib,"dbghelp.lib")
 #endif
 
@@ -109,8 +109,9 @@ namespace
 
 #endif
 
-
-#if (NV_OS_WIN32 && NV_CC_MSVC) || NV_OS_DURANGO
+// -- GODOT start -
+#if NV_OS_WIN32 || NV_OS_DURANGO
+// -- GODOT end -
 
     // We should try to simplify the top level filter as much as possible.
     // http://www.nynaeve.net/?p=128
@@ -393,8 +394,10 @@ namespace
 #pragma warning(disable:4748)
     static NV_NOINLINE int backtrace(void * trace[], int maxcount) {
         CONTEXT ctx = { 0 };
+// -- GODOT start --
 #if NV_CPU_X86 && !NV_CPU_X86_64
         ctx.ContextFlags = CONTEXT_CONTROL;
+#if NV_CC_MSVC
         _asm {
              call x
           x: pop eax
@@ -402,6 +405,13 @@ namespace
              mov ctx.Ebp, ebp
              mov ctx.Esp, esp
         }
+#else
+        register long unsigned int ebp asm("ebp");
+        ctx.Eip = (DWORD) __builtin_return_address(0);
+        ctx.Ebp = ebp;
+        ctx.Esp = (DWORD) __builtin_frame_address(0);
+#endif
+// -- GODOT end --
 #else
         RtlCaptureContext(&ctx); // Not implemented correctly in x86.
 #endif

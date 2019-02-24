@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<class name="HTTPClient" inherits="Reference" category="Core" version="3.0-beta">
+<class name="HTTPClient" inherits="Reference" category="Core" version="3.1">
 	<brief_description>
 		Hyper-text transfer protocol client.
 	</brief_description>
@@ -10,6 +10,8 @@
 		For more information on HTTP, see https://developer.mozilla.org/en-US/docs/Web/HTTP (or read RFC 2616 to get it straight from the source: https://tools.ietf.org/html/rfc2616).
 	</description>
 	<tutorials>
+		<link>https://docs.godotengine.org/en/latest/tutorials/networking/http_client_class.html</link>
+		<link>https://docs.godotengine.org/en/latest/tutorials/networking/ssl_certificates.html</link>
 	</tutorials>
 	<demos>
 	</demos>
@@ -26,7 +28,7 @@
 			</return>
 			<argument index="0" name="host" type="String">
 			</argument>
-			<argument index="1" name="port" type="int">
+			<argument index="1" name="port" type="int" default="-1">
 			</argument>
 			<argument index="2" name="use_ssl" type="bool" default="false">
 			</argument>
@@ -35,14 +37,8 @@
 			<description>
 				Connect to a host. This needs to be done before any requests are sent.
 				The host should not have http:// prepended but will strip the protocol identifier if provided.
+				If no [code]port[/code] is specified (or [code]-1[/code] is used), it is automatically set to 80 for HTTP and 443 for HTTPS (if [code]use_ssl[/code] is enabled).
 				[code]verify_host[/code] will check the SSL identity of the host if set to [code]true[/code].
-			</description>
-		</method>
-		<method name="get_connection" qualifiers="const">
-			<return type="StreamPeer">
-			</return>
-			<description>
-				Returns the current connection.
 			</description>
 		</method>
 		<method name="get_response_body_length" qualifiers="const">
@@ -86,21 +82,14 @@
 			<return type="bool">
 			</return>
 			<description>
-				If [code]true[/code] this [code]HTTPClient[/code] has a response available.
-			</description>
-		</method>
-		<method name="is_blocking_mode_enabled" qualifiers="const">
-			<return type="bool">
-			</return>
-			<description>
-				If [code]true[/code] blocking mode is enabled.
+				If [code]true[/code], this [code]HTTPClient[/code] has a response available.
 			</description>
 		</method>
 		<method name="is_response_chunked" qualifiers="const">
 			<return type="bool">
 			</return>
 			<description>
-				If [code]true[/code] this [code]HTTPClient[/code] has a response that is chunked.
+				If [code]true[/code], this [code]HTTPClient[/code] has a response that is chunked.
 			</description>
 		</method>
 		<method name="poll">
@@ -119,8 +108,14 @@
 				Generates a GET/POST application/x-www-form-urlencoded style query string from a provided dictionary, e.g.:
 				[codeblock]
 				var fields = {"username": "user", "password": "pass"}
-				String queryString = httpClient.query_string_from_dict(fields)
-				returns:= "username=user&amp;password=pass"
+				String query_string = http_client.query_string_from_dict(fields)
+				# returns: "username=user&amp;password=pass"
+				[/codeblock]
+				Furthermore, if a key has a null value, only the key itself is added, without equal sign and value. If the value is an array, for each value in it a pair with the same key is added.
+				[codeblock]
+				var fields = {"single": 123, "not_valued": null, "multiple": [22, 33, 44]}
+				String query_string = http_client.query_string_from_dict(fields)
+				# returns: "single=123&amp;not_valued&amp;multiple=22&amp;multiple=33&amp;multiple=44"
 				[/codeblock]
 			</description>
 		</method>
@@ -148,9 +143,9 @@
 				To create a POST request with query strings to push to the server, do:
 				[codeblock]
 				var fields = {"username" : "user", "password" : "pass"}
-				var queryString = httpClient.query_string_from_dict(fields)
-				var headers = ["Content-Type: application/x-www-form-urlencoded", "Content-Length: " + str(queryString.length())]
-				var result = httpClient.request(httpClient.METHOD_POST, "index.php", headers, queryString)
+				var query_string = http_client.query_string_from_dict(fields)
+				var headers = ["Content-Type: application/x-www-form-urlencoded", "Content-Length: " + str(query_string.length())]
+				var result = http_client.request(http_client.METHOD_POST, "index.php", headers, query_string)
 				[/codeblock]
 			</description>
 		</method>
@@ -171,24 +166,6 @@
 				Sends the body data raw, as a byte array and does not encode it in any way.
 			</description>
 		</method>
-		<method name="set_blocking_mode">
-			<return type="void">
-			</return>
-			<argument index="0" name="enabled" type="bool">
-			</argument>
-			<description>
-				If set to true, execution will block until all data is read from the response.
-			</description>
-		</method>
-		<method name="set_connection">
-			<return type="void">
-			</return>
-			<argument index="0" name="connection" type="StreamPeer">
-			</argument>
-			<description>
-				Sets connection to use for this client.
-			</description>
-		</method>
 		<method name="set_read_chunk_size">
 			<return type="void">
 			</return>
@@ -199,11 +176,19 @@
 			</description>
 		</method>
 	</methods>
+	<members>
+		<member name="blocking_mode_enabled" type="bool" setter="set_blocking_mode" getter="is_blocking_mode_enabled">
+			If [code]true[/code], execution will block until all data is read from the response.
+		</member>
+		<member name="connection" type="StreamPeer" setter="set_connection" getter="get_connection">
+			The connection to use for this client.
+		</member>
+	</members>
 	<constants>
 		<constant name="METHOD_GET" value="0" enum="Method">
 			HTTP GET method. The GET method requests a representation of the specified resource. Requests using GET should only retrieve data.
 		</constant>
-		<constant name="METHOD_HEAD" value="1" enum="Method">#
+		<constant name="METHOD_HEAD" value="1" enum="Method">
 			HTTP HEAD method. The HEAD method asks for a response identical to that of a GET request, but without the response body. This is useful to request metadata like HTTP headers or to check if a resource exists.
 		</constant>
 		<constant name="METHOD_POST" value="2" enum="Method">
@@ -224,7 +209,10 @@
 		<constant name="METHOD_CONNECT" value="7" enum="Method">
 			HTTP CONNECT method. The CONNECT method establishes a tunnel to the server identified by the target resource. Rarely used.
 		</constant>
-		<constant name="METHOD_MAX" value="8" enum="Method">
+		<constant name="METHOD_PATCH" value="8" enum="Method">
+			HTTP PATCH method. The PATCH method is used to apply partial modifications to a resource.
+		</constant>
+		<constant name="METHOD_MAX" value="9" enum="Method">
 			Marker for end of [code]METHOD_*[/code] enum. Not used.
 		</constant>
 		<constant name="STATUS_DISCONNECTED" value="0" enum="Status">
@@ -290,6 +278,9 @@
 		<constant name="RESPONSE_MULTI_STATUS" value="207" enum="ResponseCode">
 			HTTP status code [code]207 Multi-Status[/code] (WebDAV). A Multi-Status response conveys information about multiple resources in situations where multiple status codes might be appropriate.
 		</constant>
+		<constant name="RESPONSE_ALREADY_REPORTED" value="208" enum="ResponseCode">
+			HTTP status code [code]208 Already Reported[/code] (WebDAV). Used inside a DAV: propstat response element to avoid enumerating the internal members of multiple bindings to the same collection repeatedly.
+		</constant>
 		<constant name="RESPONSE_IM_USED" value="226" enum="ResponseCode">
 			HTTP status code [code]226 IM Used[/code] (WebDAV). The server has fulfilled a GET request for the resource, and the response is a representation of the result of one or more instance-manipulations applied to the current instance.
 		</constant>
@@ -311,8 +302,14 @@
 		<constant name="RESPONSE_USE_PROXY" value="305" enum="ResponseCode">
 			HTTP status code [code]305 Use Proxy[/code]. Deprecated. Do not use.
 		</constant>
+		<constant name="RESPONSE_SWITCH_PROXY" value="306" enum="ResponseCode">
+			HTTP status code [code]306 Switch Proxy[/code]. Deprecated. Do not use.
+		</constant>
 		<constant name="RESPONSE_TEMPORARY_REDIRECT" value="307" enum="ResponseCode">
 			HTTP status code [code]307 Temporary Redirect[/code]. The target resource resides temporarily under a different URI and the user agent MUST NOT change the request method if it performs an automatic redirection to that URI.
+		</constant>
+		<constant name="RESPONSE_PERMANENT_REDIRECT" value="308" enum="ResponseCode">
+			HTTP status code [code]308 Permanent Redirect[/code]. The target resource has been assigned a new permanent URI and any future references to this resource ought to use one of the enclosed URIs.
 		</constant>
 		<constant name="RESPONSE_BAD_REQUEST" value="400" enum="ResponseCode">
 			HTTP status code [code]400 Bad Request[/code]. The request was invalid. The server cannot or will not process the request due to something that is perceived to be a client error (e.g., malformed request syntax, invalid request message framing, invalid request contents, or deceptive request routing).
@@ -368,6 +365,12 @@
 		<constant name="RESPONSE_EXPECTATION_FAILED" value="417" enum="ResponseCode">
 			HTTP status code [code]417 Expectation Failed[/code]. The expectation given in the request's Expect header field could not be met by at least one of the inbound servers.
 		</constant>
+		<constant name="RESPONSE_IM_A_TEAPOT" value="418" enum="ResponseCode">
+			HTTP status code [code]418 I'm A Teapot[/code]. Any attempt to brew coffee with a teapot should result in the error code "418 I'm a teapot". The resulting entity body MAY be short and stout.
+		</constant>
+		<constant name="RESPONSE_MISDIRECTED_REQUEST" value="421" enum="ResponseCode">
+			HTTP status code [code]421 Misdirected Request[/code]. The request was directed at a server that is not able to produce a response. This can be sent by a server that is not configured to produce responses for the combination of scheme and authority that are included in the request URI.
+		</constant>
 		<constant name="RESPONSE_UNPROCESSABLE_ENTITY" value="422" enum="ResponseCode">
 			HTTP status code [code]422 Unprocessable Entity[/code] (WebDAV). The server understands the content type of the request entity (hence a 415 Unsupported Media Type status code is inappropriate), and the syntax of the request entity is correct (thus a 400 Bad Request status code is inappropriate) but was unable to process the contained instructions.
 		</constant>
@@ -379,6 +382,18 @@
 		</constant>
 		<constant name="RESPONSE_UPGRADE_REQUIRED" value="426" enum="ResponseCode">
 			HTTP status code [code]426 Upgrade Required[/code]. The server refuses to perform the request using the current protocol but might be willing to do so after the client upgrades to a different protocol.
+		</constant>
+		<constant name="RESPONSE_PRECONDITION_REQUIRED" value="428" enum="ResponseCode">
+			HTTP status code [code]428 Precondition Required[/code]. The origin server requires the request to be conditional.
+		</constant>
+		<constant name="RESPONSE_TOO_MANY_REQUESTS" value="429" enum="ResponseCode">
+			HTTP status code [code]429 Too Many Requests[/code]. The user has sent too many requests in a given amount of time (see "rate limiting"). Back off and increase time between requests or try again later.
+		</constant>
+		<constant name="RESPONSE_REQUEST_HEADER_FIELDS_TOO_LARGE" value="431" enum="ResponseCode">
+			HTTP status code [code]431 Request Header Fields Too Large[/code]. The server is unwilling to process the request because its header fields are too large. The request MAY be resubmitted after reducing the size of the request header fields.
+		</constant>
+		<constant name="RESPONSE_UNAVAILABLE_FOR_LEGAL_REASONS" value="451" enum="ResponseCode">
+			HTTP status code [code]451 Response Unavailable For Legal Reasons[/code]. The server is denying access to the resource as a consequence of a legal demand.
 		</constant>
 		<constant name="RESPONSE_INTERNAL_SERVER_ERROR" value="500" enum="ResponseCode">
 			HTTP status code [code]500 Internal Server Error[/code]. The server encountered an unexpected condition that prevented it from fulfilling the request.
@@ -398,11 +413,20 @@
 		<constant name="RESPONSE_HTTP_VERSION_NOT_SUPPORTED" value="505" enum="ResponseCode">
 			HTTP status code [code]505 HTTP Version Not Supported[/code]. The server does not support, or refuses to support, the major version of HTTP that was used in the request message.
 		</constant>
+		<constant name="RESPONSE_VARIANT_ALSO_NEGOTIATES" value="506" enum="ResponseCode">
+			HTTP status code [code]506 Variant Also Negotiates[/code]. The server has an internal configuration error: the chosen variant resource is configured to engage in transparent content negotiation itself, and is therefore not a proper end point in the negotiation process.
+		</constant>
 		<constant name="RESPONSE_INSUFFICIENT_STORAGE" value="507" enum="ResponseCode">
 			HTTP status code [code]507 Insufficient Storage[/code]. The method could not be performed on the resource because the server is unable to store the representation needed to successfully complete the request.
 		</constant>
+		<constant name="RESPONSE_LOOP_DETECTED" value="508" enum="ResponseCode">
+			HTTP status code [code]508 Loop Detected[/code]. The server terminated an operation because it encountered an infinite loop while processing a request with "Depth: infinity". This status indicates that the entire operation failed.
+		</constant>
 		<constant name="RESPONSE_NOT_EXTENDED" value="510" enum="ResponseCode">
 			HTTP status code [code]510 Not Extended[/code]. The policy for accessing the resource has not been met in the request. The server should send back all the information necessary for the client to issue an extended request.
+		</constant>
+		<constant name="RESPONSE_NETWORK_AUTH_REQUIRED" value="511" enum="ResponseCode">
+			HTTP status code [code]511 Network Authentication Required[/code]. The client needs to authenticate to gain network access.
 		</constant>
 	</constants>
 </class>

@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,10 +27,11 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #include "editor_run.h"
 
+#include "core/project_settings.h"
 #include "editor_settings.h"
-#include "project_settings.h"
 
 EditorRun::Status EditorRun::get_status() const {
 
@@ -67,9 +68,24 @@ Error EditorRun::run(const String &p_scene, const String p_custom_args, const Li
 
 	int screen = EditorSettings::get_singleton()->get("run/window_placement/screen");
 	if (screen == 0) {
+		// Same as editor
 		screen = OS::get_singleton()->get_current_screen();
+	} else if (screen == 1) {
+		// Previous monitor (wrap to the other end if needed)
+		screen = Math::wrapi(
+				OS::get_singleton()->get_current_screen() - 1,
+				0,
+				OS::get_singleton()->get_screen_count());
+	} else if (screen == 2) {
+		// Next monitor (wrap to the other end if needed)
+		screen = Math::wrapi(
+				OS::get_singleton()->get_current_screen() + 1,
+				0,
+				OS::get_singleton()->get_screen_count());
 	} else {
-		screen--;
+		// Fixed monitor ID
+		// There are 3 special options, so decrement the option ID by 3 to get the monitor ID
+		screen -= 3;
 	}
 
 	if (OS::get_singleton()->is_disable_crash_handler()) {
@@ -101,7 +117,14 @@ Error EditorRun::run(const String &p_scene, const String p_custom_args, const Li
 			args.push_back(itos(screen_rect.position.x) + "," + itos(screen_rect.position.y));
 		} break;
 		case 1: { // centered
-			Vector2 pos = screen_rect.position + ((screen_rect.size - desired_size) / 2).floor();
+			int display_scale = 1;
+#ifdef OSX_ENABLED
+			if (OS::get_singleton()->get_screen_dpi(screen) >= 192 && OS::get_singleton()->get_screen_size(screen).x > 2000) {
+				display_scale = 2;
+			}
+#endif
+
+			Vector2 pos = screen_rect.position + ((screen_rect.size / display_scale - desired_size) / 2).floor();
 			args.push_back("--position");
 			args.push_back(itos(pos.x) + "," + itos(pos.y));
 		} break;

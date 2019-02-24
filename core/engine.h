@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,13 +27,14 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #ifndef ENGINE_H
 #define ENGINE_H
 
-#include "list.h"
-#include "os/main_loop.h"
-#include "ustring.h"
-#include "vector.h"
+#include "core/list.h"
+#include "core/os/main_loop.h"
+#include "core/ustring.h"
+#include "core/vector.h"
 
 class Engine {
 
@@ -56,6 +57,7 @@ private:
 	float _frame_step;
 
 	int ips;
+	float physics_jitter_fix;
 	float _fps;
 	int _target_fps;
 	float _time_scale;
@@ -77,6 +79,9 @@ public:
 
 	virtual void set_iterations_per_second(int p_ips);
 	virtual int get_iterations_per_second() const;
+
+	void set_physics_jitter_fix(float p_threshold);
+	float get_physics_jitter_fix() const;
 
 	virtual void set_target_fps(int p_fps);
 	virtual float get_target_fps() const;
@@ -113,8 +118,14 @@ public:
 #endif
 
 	Dictionary get_version_info() const;
+	Dictionary get_author_info() const;
+	Array get_copyright_info() const;
+	Dictionary get_donor_info() const;
+	Dictionary get_license_info() const;
+	String get_license_text() const;
 
 	Engine();
+	virtual ~Engine() {}
 };
 
 #endif // ENGINE_H

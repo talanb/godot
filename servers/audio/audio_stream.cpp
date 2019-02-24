@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,7 +27,10 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #include "audio_stream.h"
+#include "core/os/os.h"
+#include "core/project_settings.h"
 
 //////////////////////////////
 
@@ -45,9 +48,9 @@ void AudioStreamPlaybackResampled::_begin_resample() {
 
 void AudioStreamPlaybackResampled::mix(AudioFrame *p_buffer, float p_rate_scale, int p_frames) {
 
-	float target_rate = AudioServer::get_singleton()->get_mix_rate() * p_rate_scale;
+	float target_rate = AudioServer::get_singleton()->get_mix_rate();
 
-	uint64_t mix_increment = uint64_t((get_stream_sampling_rate() / double(target_rate)) * double(FP_LEN));
+	uint64_t mix_increment = uint64_t(((get_stream_sampling_rate() * p_rate_scale) / double(target_rate)) * double(FP_LEN));
 
 	for (int i = 0; i < p_frames; i++) {
 
@@ -76,11 +79,155 @@ void AudioStreamPlaybackResampled::mix(AudioFrame *p_buffer, float p_rate_scale,
 			internal_buffer[1] = internal_buffer[INTERNAL_BUFFER_LEN + 1];
 			internal_buffer[2] = internal_buffer[INTERNAL_BUFFER_LEN + 2];
 			internal_buffer[3] = internal_buffer[INTERNAL_BUFFER_LEN + 3];
-			_mix_internal(internal_buffer + 4, INTERNAL_BUFFER_LEN);
+			if (is_playing()) {
+				_mix_internal(internal_buffer + 4, INTERNAL_BUFFER_LEN);
+			} else {
+				//fill with silence, not playing
+				for (int j = 0; j < INTERNAL_BUFFER_LEN; ++j) {
+					internal_buffer[j + 4] = AudioFrame(0, 0);
+				}
+			}
 			mix_offset -= (INTERNAL_BUFFER_LEN << FP_BITS);
 		}
 	}
 }
+
+////////////////////////////////
+
+void AudioStream::_bind_methods() {
+
+	ClassDB::bind_method(D_METHOD("get_length"), &AudioStream::get_length);
+}
+
+////////////////////////////////
+
+Ref<AudioStreamPlayback> AudioStreamMicrophone::instance_playback() {
+	Ref<AudioStreamPlaybackMicrophone> playback;
+	playback.instance();
+
+	playbacks.insert(playback.ptr());
+
+	playback->microphone = Ref<AudioStreamMicrophone>((AudioStreamMicrophone *)this);
+	playback->active = false;
+
+	return playback;
+}
+
+String AudioStreamMicrophone::get_stream_name() const {
+
+	//if (audio_stream.is_valid()) {
+	//return "Random: " + audio_stream->get_name();
+	//}
+	return "Microphone";
+}
+
+float AudioStreamMicrophone::get_length() const {
+	return 0;
+}
+
+void AudioStreamMicrophone::_bind_methods() {
+}
+
+AudioStreamMicrophone::AudioStreamMicrophone() {
+}
+
+void AudioStreamPlaybackMicrophone::_mix_internal(AudioFrame *p_buffer, int p_frames) {
+
+	AudioDriver::get_singleton()->lock();
+
+	Vector<int32_t> buf = AudioDriver::get_singleton()->get_input_buffer();
+	unsigned int input_size = AudioDriver::get_singleton()->get_input_size();
+	int mix_rate = AudioDriver::get_singleton()->get_mix_rate();
+	int playback_delay = MIN(((50 * mix_rate) / 1000) * 2, buf.size() >> 1);
+#ifdef DEBUG_ENABLED
+	unsigned int input_position = AudioDriver::get_singleton()->get_input_position();
+#endif
+
+	if (playback_delay > input_size) {
+		for (int i = 0; i < p_frames; i++) {
+			p_buffer[i] = AudioFrame(0.0f, 0.0f);
+		}
+		input_ofs = 0;
+	} else {
+		for (int i = 0; i < p_frames; i++) {
+			if (input_size > input_ofs) {
+				float l = (buf[input_ofs++] >> 16) / 32768.f;
+				if (input_ofs >= buf.size()) {
+					input_ofs = 0;
+				}
+				float r = (buf[input_ofs++] >> 16) / 32768.f;
+				if (input_ofs >= buf.size()) {
+					input_ofs = 0;
+				}
+
+				p_buffer[i] = AudioFrame(l, r);
+			} else {
+				p_buffer[i] = AudioFrame(0.0f, 0.0f);
+			}
+		}
+	}
+
+#ifdef DEBUG_ENABLED
+	if (input_ofs > input_position && (input_ofs - input_position) < (p_frames * 2)) {
+		print_verbose(String(get_class_name()) + " buffer underrun: input_position=" + itos(input_position) + " input_ofs=" + itos(input_ofs) + " input_size=" + itos(input_size));
+	}
+#endif
+
+	AudioDriver::get_singleton()->unlock();
+}
+
+void AudioStreamPlaybackMicrophone::mix(AudioFrame *p_buffer, float p_rate_scale, int p_frames) {
+	AudioStreamPlaybackResampled::mix(p_buffer, p_rate_scale, p_frames);
+}
+
+float AudioStreamPlaybackMicrophone::get_stream_sampling_rate() {
+	return AudioDriver::get_singleton()->get_mix_rate();
+}
+
+void AudioStreamPlaybackMicrophone::start(float p_from_pos) {
+
+	if (!GLOBAL_GET("audio/enable_audio_input")) {
+		WARN_PRINTS("Need to enable Project settings > Audio > Enable Audio Input option to use capturing.");
+		return;
+	}
+
+	input_ofs = 0;
+
+	AudioDriver::get_singleton()->capture_start();
+
+	active = true;
+	_begin_resample();
+}
+
+void AudioStreamPlaybackMicrophone::stop() {
+	AudioDriver::get_singleton()->capture_stop();
+	active = false;
+}
+
+bool AudioStreamPlaybackMicrophone::is_playing() const {
+	return active;
+}
+
+int AudioStreamPlaybackMicrophone::get_loop_count() const {
+	return 0;
+}
+
+float AudioStreamPlaybackMicrophone::get_playback_position() const {
+	return 0;
+}
+
+void AudioStreamPlaybackMicrophone::seek(float p_time) {
+	return; // Can't seek a microphone input
+}
+
+AudioStreamPlaybackMicrophone::~AudioStreamPlaybackMicrophone() {
+	microphone->playbacks.erase(this);
+	stop();
+}
+
+AudioStreamPlaybackMicrophone::AudioStreamPlaybackMicrophone() {
+}
+
 ////////////////////////////////
 
 void AudioStreamRandomPitch::set_audio_stream(const Ref<AudioStream> &p_audio_stream) {
@@ -126,6 +273,14 @@ String AudioStreamRandomPitch::get_stream_name() const {
 		return "Random: " + audio_stream->get_name();
 	}
 	return "RandomPitch";
+}
+
+float AudioStreamRandomPitch::get_length() const {
+	if (audio_stream.is_valid()) {
+		return audio_stream->get_length();
+	}
+
+	return 0;
 }
 
 void AudioStreamRandomPitch::_bind_methods() {
@@ -199,14 +354,6 @@ void AudioStreamPlaybackRandomPitch::mix(AudioFrame *p_buffer, float p_rate_scal
 			p_buffer[i] = AudioFrame(0, 0);
 		}
 	}
-}
-
-float AudioStreamPlaybackRandomPitch::get_length() const {
-	if (playing.is_valid()) {
-		return playing->get_length();
-	}
-
-	return 0;
 }
 
 AudioStreamPlaybackRandomPitch::~AudioStreamPlaybackRandomPitch() {

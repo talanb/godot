@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,6 +27,7 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #include "area_pair_2d_sw.h"
 #include "collision_solver_2d_sw.h"
 
@@ -146,10 +147,10 @@ Area2Pair2DSW::~Area2Pair2DSW() {
 
 	if (colliding) {
 
-		if (area_b->has_area_monitor_callback() && area_a->is_monitorable())
+		if (area_b->has_area_monitor_callback())
 			area_b->remove_area_from_query(area_a, shape_a, shape_b);
 
-		if (area_a->has_area_monitor_callback() && area_b->is_monitorable())
+		if (area_a->has_area_monitor_callback())
 			area_a->remove_area_from_query(area_b, shape_b, shape_a);
 	}
 

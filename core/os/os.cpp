@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,13 +27,16 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #include "os.h"
 
-#include "dir_access.h"
-#include "input.h"
-#include "os/file_access.h"
-#include "project_settings.h"
-#include "version_generated.gen.h"
+#include "core/os/dir_access.h"
+#include "core/os/file_access.h"
+#include "core/os/input.h"
+#include "core/os/midi_driver.h"
+#include "core/project_settings.h"
+#include "core/version_generated.gen.h"
+#include "servers/audio_server.h"
 
 #include <stdarg.h>
 
@@ -56,6 +59,9 @@ uint64_t OS::get_unix_time() const {
 	return 0;
 };
 uint64_t OS::get_system_time_secs() const {
+	return 0;
+}
+uint64_t OS::get_system_time_msecs() const {
 	return 0;
 }
 void OS::debug_break(){
@@ -387,16 +393,16 @@ Error OS::dialog_input_text(String p_title, String p_description, String p_parti
 	return OK;
 };
 
-int OS::get_static_memory_usage() const {
+uint64_t OS::get_static_memory_usage() const {
 
 	return Memory::get_mem_usage();
 }
-int OS::get_dynamic_memory_usage() const {
+uint64_t OS::get_dynamic_memory_usage() const {
 
 	return MemoryPool::total_memory;
 }
 
-int OS::get_static_memory_peak_usage() const {
+uint64_t OS::get_static_memory_peak_usage() const {
 
 	return Memory::get_mem_max_usage();
 }
@@ -409,10 +415,10 @@ Error OS::set_cwd(const String &p_cwd) {
 bool OS::has_touchscreen_ui_hint() const {
 
 	//return false;
-	return Input::get_singleton() && Input::get_singleton()->is_emulating_touchscreen();
+	return Input::get_singleton() && Input::get_singleton()->is_emulating_touch_from_mouse();
 }
 
-int OS::get_free_static_memory() const {
+uint64_t OS::get_free_static_memory() const {
 
 	return Memory::get_mem_available();
 }
@@ -536,12 +542,21 @@ String OS::get_joy_guid(int p_device) const {
 
 void OS::set_context(int p_context) {
 }
+
+OS::SwitchVSyncCallbackInThread OS::switch_vsync_function = NULL;
+
 void OS::set_use_vsync(bool p_enable) {
+	_use_vsync = p_enable;
+	if (switch_vsync_function) { //if a function was set, use function
+		switch_vsync_function(p_enable);
+	} else { //otherwise just call here
+		_set_use_vsync(p_enable);
+	}
 }
 
 bool OS::is_vsync_enabled() const {
 
-	return true;
+	return _use_vsync;
 }
 
 OS::PowerState OS::get_power_state() {
@@ -563,6 +578,13 @@ bool OS::has_feature(const String &p_feature) {
 		return true;
 #else
 	if (p_feature == "release")
+		return true;
+#endif
+#ifdef TOOLS_ENABLED
+	if (p_feature == "editor")
+		return true;
+#else
+	if (p_feature == "standalone")
 		return true;
 #endif
 
@@ -603,16 +625,92 @@ bool OS::has_feature(const String &p_feature) {
 	if (_check_internal_feature_support(p_feature))
 		return true;
 
+	if (ProjectSettings::get_singleton()->has_custom_feature(p_feature))
+		return true;
+
 	return false;
 }
 
-void *OS::get_stack_bottom() const {
-	return _stack_bottom;
+void OS::center_window() {
+
+	if (is_window_fullscreen()) return;
+
+	Point2 sp = get_screen_position(get_current_screen());
+	Size2 scr = get_screen_size(get_current_screen());
+	Size2 wnd = get_real_window_size();
+
+	int x = sp.width + (scr.width - wnd.width) / 2;
+	int y = sp.height + (scr.height - wnd.height) / 2;
+
+	set_window_position(Vector2(x, y));
+}
+
+int OS::get_video_driver_count() const {
+
+	return 2;
+}
+
+const char *OS::get_video_driver_name(int p_driver) const {
+
+	switch (p_driver) {
+		case VIDEO_DRIVER_GLES2:
+			return "GLES2";
+		case VIDEO_DRIVER_GLES3:
+		default:
+			return "GLES3";
+	}
+}
+
+int OS::get_audio_driver_count() const {
+
+	return AudioDriverManager::get_driver_count();
+}
+
+const char *OS::get_audio_driver_name(int p_driver) const {
+
+	AudioDriver *driver = AudioDriverManager::get_driver(p_driver);
+	ERR_FAIL_COND_V(!driver, "");
+	return AudioDriverManager::get_driver(p_driver)->get_name();
+}
+
+void OS::set_restart_on_exit(bool p_restart, const List<String> &p_restart_arguments) {
+	restart_on_exit = p_restart;
+	restart_commandline = p_restart_arguments;
+}
+
+bool OS::is_restart_on_exit_set() const {
+	return restart_on_exit;
+}
+
+List<String> OS::get_restart_on_exit_arguments() const {
+	return restart_commandline;
+}
+
+PoolStringArray OS::get_connected_midi_inputs() {
+
+	if (MIDIDriver::get_singleton())
+		return MIDIDriver::get_singleton()->get_connected_inputs();
+
+	PoolStringArray list;
+	return list;
+}
+
+void OS::open_midi_inputs() {
+
+	if (MIDIDriver::get_singleton())
+		MIDIDriver::get_singleton()->open();
+}
+
+void OS::close_midi_inputs() {
+
+	if (MIDIDriver::get_singleton())
+		MIDIDriver::get_singleton()->close();
 }
 
 OS::OS() {
 	void *volatile stack_bottom;
 
+	restart_on_exit = false;
 	last_error = NULL;
 	singleton = this;
 	_keep_screen_on = true; // set default value to true, because this had been true before godot 2.0.
@@ -626,6 +724,7 @@ OS::OS() {
 	_render_thread_mode = RENDER_THREAD_SAFE;
 
 	_allow_hidpi = false;
+	_allow_layered = false;
 	_stack_bottom = (void *)(&stack_bottom);
 
 	_logger = NULL;

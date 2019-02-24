@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,10 +27,18 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #include "segment_shape_2d.h"
 
 #include "servers/physics_2d_server.h"
 #include "servers/visual_server.h"
+
+bool SegmentShape2D::_edit_is_selected_on_click(const Point2 &p_point, double p_tolerance) const {
+
+	Vector2 l[2] = { a, b };
+	Vector2 closest = Geometry::get_closest_point_to_segment_2d(p_point, l);
+	return p_point.distance_to(closest) < p_tolerance;
+}
 
 void SegmentShape2D::_update_shape() {
 
@@ -98,7 +106,10 @@ SegmentShape2D::SegmentShape2D() :
 
 void RayShape2D::_update_shape() {
 
-	Physics2DServer::get_singleton()->shape_set_data(get_rid(), length);
+	Dictionary d;
+	d["length"] = length;
+	d["slips_on_slope"] = slips_on_slope;
+	Physics2DServer::get_singleton()->shape_set_data(get_rid(), d);
 	emit_changed();
 }
 
@@ -132,7 +143,11 @@ void RayShape2D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_length", "length"), &RayShape2D::set_length);
 	ClassDB::bind_method(D_METHOD("get_length"), &RayShape2D::get_length);
 
+	ClassDB::bind_method(D_METHOD("set_slips_on_slope", "active"), &RayShape2D::set_slips_on_slope);
+	ClassDB::bind_method(D_METHOD("get_slips_on_slope"), &RayShape2D::get_slips_on_slope);
+
 	ADD_PROPERTY(PropertyInfo(Variant::REAL, "length"), "set_length", "get_length");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "slips_on_slope"), "set_slips_on_slope", "get_slips_on_slope");
 }
 
 void RayShape2D::set_length(real_t p_length) {
@@ -145,9 +160,20 @@ real_t RayShape2D::get_length() const {
 	return length;
 }
 
+void RayShape2D::set_slips_on_slope(bool p_active) {
+
+	slips_on_slope = p_active;
+	_update_shape();
+}
+
+bool RayShape2D::get_slips_on_slope() const {
+	return slips_on_slope;
+}
+
 RayShape2D::RayShape2D() :
 		Shape2D(Physics2DServer::get_singleton()->ray_shape_create()) {
 
 	length = 20;
+	slips_on_slope = false;
 	_update_shape();
 }

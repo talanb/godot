@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,10 +27,12 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #include "a_star.h"
-#include "geometry.h"
+
+#include "core/math/geometry.h"
+#include "core/script_language.h"
 #include "scene/scene_string_names.h"
-#include "script_language.h"
 
 int AStar::get_available_point_id() const {
 
@@ -95,11 +97,14 @@ void AStar::remove_point(int p_id) {
 
 	Point *p = points[p_id];
 
-	for (int i = 0; i < p->neighbours.size(); i++) {
-
-		Segment s(p_id, p->neighbours[i]->id);
-		segments.erase(s);
-		p->neighbours[i]->neighbours.erase(p);
+	Map<int, Point *>::Element *PE = points.front();
+	while (PE) {
+		for (Set<Point *>::Element *E = PE->get()->neighbours.front(); E; E = E->next()) {
+			Segment s(p_id, E->get()->id);
+			segments.erase(s);
+			E->get()->neighbours.erase(p);
+		}
+		PE = PE->next();
 	}
 
 	memdelete(p);
@@ -114,10 +119,10 @@ void AStar::connect_points(int p_id, int p_with_id, bool bidirectional) {
 
 	Point *a = points[p_id];
 	Point *b = points[p_with_id];
-	a->neighbours.push_back(b);
+	a->neighbours.insert(b);
 
 	if (bidirectional)
-		b->neighbours.push_back(a);
+		b->neighbours.insert(a);
 
 	Segment s(p_id, p_with_id);
 	if (s.from == p_id) {
@@ -167,8 +172,8 @@ PoolVector<int> AStar::get_point_connections(int p_id) {
 
 	Point *p = points[p_id];
 
-	for (int i = 0; i < p->neighbours.size(); i++) {
-		point_list.push_back(p->neighbours[i]->id);
+	for (Set<Point *>::Element *E = p->neighbours.front(); E; E = E->next()) {
+		point_list.push_back(E->get()->id);
 	}
 
 	return point_list;
@@ -241,21 +246,16 @@ bool AStar::_solve(Point *begin_point, Point *end_point) {
 
 	bool found_route = false;
 
-	for (int i = 0; i < begin_point->neighbours.size(); i++) {
+	for (Set<Point *>::Element *E = begin_point->neighbours.front(); E; E = E->next()) {
 
-		Point *n = begin_point->neighbours[i];
+		Point *n = E->get();
 		n->prev_point = begin_point;
 		n->distance = _compute_cost(begin_point->id, n->id) * n->weight_scale;
 		n->last_pass = pass;
 		open_list.add(&n->list);
-
-		if (end_point == n) {
-			found_route = true;
-			break;
-		}
 	}
 
-	while (!found_route) {
+	while (true) {
 
 		if (open_list.first() == NULL) {
 			// No path found
@@ -263,8 +263,8 @@ bool AStar::_solve(Point *begin_point, Point *end_point) {
 		}
 		// Check open list
 
-		SelfList<Point> *least_cost_point = NULL;
-		real_t least_cost = 1e30;
+		SelfList<Point> *least_cost_point = open_list.first();
+		real_t least_cost = Math_INF;
 
 		// TODO: Cache previous results
 		for (SelfList<Point> *E = open_list.first(); E; E = E->next()) {
@@ -275,19 +275,20 @@ bool AStar::_solve(Point *begin_point, Point *end_point) {
 			cost += _estimate_cost(p->id, end_point->id);
 
 			if (cost < least_cost) {
-
 				least_cost_point = E;
 				least_cost = cost;
 			}
 		}
 
 		Point *p = least_cost_point->self();
-		// Open the neighbours for search
-		int es = p->neighbours.size();
+		if (p == end_point) {
+			found_route = true;
+			break;
+		}
 
-		for (int i = 0; i < es; i++) {
+		for (Set<Point *>::Element *E = p->neighbours.front(); E; E = E->next()) {
 
-			Point *e = p->neighbours[i];
+			Point *e = E->get();
 
 			real_t distance = _compute_cost(p->id, e->id) * e->weight_scale + p->distance;
 
@@ -295,7 +296,6 @@ bool AStar::_solve(Point *begin_point, Point *end_point) {
 				// Already visited, is this cheaper?
 
 				if (e->distance > distance) {
-
 					e->prev_point = p;
 					e->distance = distance;
 				}
@@ -306,17 +306,8 @@ bool AStar::_solve(Point *begin_point, Point *end_point) {
 				e->distance = distance;
 				e->last_pass = pass; // Mark as used
 				open_list.add(&e->list);
-
-				if (e == end_point) {
-					// End reached; stop algorithm
-					found_route = true;
-					break;
-				}
 			}
 		}
-
-		if (found_route)
-			break;
 
 		open_list.remove(least_cost_point);
 	}
@@ -383,14 +374,14 @@ PoolVector<Vector3> AStar::get_point_path(int p_from_id, int p_to_id) {
 	{
 		PoolVector<Vector3>::Write w = path.write();
 
-		Point *p = end_point;
+		Point *p2 = end_point;
 		int idx = pc - 1;
-		while (p != begin_point) {
-			w[idx--] = p->pos;
-			p = p->prev_point;
+		while (p2 != begin_point) {
+			w[idx--] = p2->pos;
+			p2 = p2->prev_point;
 		}
 
-		w[0] = p->pos; // Assign first
+		w[0] = p2->pos; // Assign first
 	}
 
 	return path;
@@ -459,7 +450,7 @@ void AStar::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("has_point", "id"), &AStar::has_point);
 	ClassDB::bind_method(D_METHOD("get_points"), &AStar::get_points);
 
-	ClassDB::bind_method(D_METHOD("get_point_connections"), &AStar::get_point_connections);
+	ClassDB::bind_method(D_METHOD("get_point_connections", "id"), &AStar::get_point_connections);
 
 	ClassDB::bind_method(D_METHOD("connect_points", "id", "to_id", "bidirectional"), &AStar::connect_points, DEFVAL(true));
 	ClassDB::bind_method(D_METHOD("disconnect_points", "id", "to_id"), &AStar::disconnect_points);

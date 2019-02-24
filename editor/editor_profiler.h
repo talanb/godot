@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,6 +27,7 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #ifndef EDITORPROFILER_H
 #define EDITORPROFILER_H
 
@@ -99,6 +100,7 @@ public:
 
 private:
 	Button *activate;
+	Button *clear_button;
 	TextureRect *graph;
 	Ref<ImageTexture> graph_texture;
 	PoolVector<uint8_t> graph_image;
@@ -132,8 +134,9 @@ private:
 	void _update_frame();
 
 	void _activate_pressed();
+	void _clear_pressed();
 
-	String _get_time_as_text(Metric &m, float p_time, int p_calls);
+	String _get_time_as_text(const Metric &m, float p_time, int p_calls);
 
 	void _make_metric_ptrs(Metric &m);
 	void _item_edited();

@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,17 +27,18 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
-#ifndef OSUWP_H
-#define OSUWP_H
 
-#include "core/math/math_2d.h"
+#ifndef OS_UWP_H
+#define OS_UWP_H
+
+#include "context_egl_uwp.h"
+#include "core/math/transform_2d.h"
+#include "core/os/input.h"
+#include "core/os/os.h"
 #include "core/ustring.h"
 #include "drivers/xaudio2/audio_driver_xaudio2.h"
-#include "gl_context_egl.h"
 #include "joypad_uwp.h"
 #include "main/input_default.h"
-#include "os/input.h"
-#include "os/os.h"
 #include "power_uwp.h"
 #include "servers/audio_server.h"
 #include "servers/visual/rasterizer.h"
@@ -51,7 +52,7 @@
 /**
 	@author Juan Linietsky <reduzio@gmail.com>
 */
-class OSUWP : public OS {
+class OS_UWP : public OS {
 
 public:
 	struct KeyEvent {
@@ -94,9 +95,11 @@ private:
 	VisualServer *visual_server;
 	int pressrc;
 
-	ContextEGL *gl_context;
+	ContextEGL_UWP *gl_context;
+	Windows::UI::Core::CoreWindow ^ window;
 
 	VideoMode video_mode;
+	int video_driver_index;
 
 	MainLoop *main_loop;
 
@@ -141,7 +144,7 @@ private:
 		/* clang-format off */
 	internal:
 		ManagedType() { alert_close_handle = false; }
-		property OSUWP* os;
+		property OS_UWP* os;
 		/* clang-format on */
 	};
 	ManagedType ^ managed_object;
@@ -149,16 +152,13 @@ private:
 	Windows::Devices::Sensors::Magnetometer ^ magnetometer;
 	Windows::Devices::Sensors::Gyrometer ^ gyrometer;
 
-	// functions used by main to initialize/deintialize the OS
+	// functions used by main to initialize/deinitialize the OS
 protected:
 	virtual int get_video_driver_count() const;
-	virtual const char *get_video_driver_name(int p_driver) const;
-
-	virtual int get_audio_driver_count() const;
-	virtual const char *get_audio_driver_name(int p_driver) const;
+	virtual int get_current_video_driver() const;
 
 	virtual void initialize_core();
-	virtual void initialize(const VideoMode &p_desired, int p_video_driver, int p_audio_driver);
+	virtual Error initialize(const VideoMode &p_desired, int p_video_driver, int p_audio_driver);
 
 	virtual void set_main_loop(MainLoop *p_main_loop);
 	virtual void delete_main_loop();
@@ -213,11 +213,13 @@ public:
 
 	virtual bool has_environment(const String &p_var) const;
 	virtual String get_environment(const String &p_var) const;
+	virtual bool set_environment(const String &p_var, const String &p_value) const;
 
 	virtual void set_clipboard(const String &p_text);
 	virtual String get_clipboard() const;
 
 	void set_cursor_shape(CursorShape p_shape);
+	virtual void set_custom_mouse_cursor(const RES &p_cursor, CursorShape p_shape, const Vector2 &p_hotspot);
 	void set_icon(const Ref<Image> &p_icon);
 
 	virtual String get_executable_path() const;
@@ -229,7 +231,7 @@ public:
 
 	virtual bool _check_internal_feature_support(const String &p_feature);
 
-	void set_gl_context(ContextEGL *p_context);
+	void set_window(Windows::UI::Core::CoreWindow ^ p_window);
 	void screen_size_changed();
 
 	virtual void release_rendering_thread();
@@ -241,6 +243,10 @@ public:
 	virtual bool has_virtual_keyboard() const;
 	virtual void show_virtual_keyboard(const String &p_existing_text, const Rect2 &p_screen_rect = Rect2());
 	virtual void hide_virtual_keyboard();
+
+	virtual Error open_dynamic_library(const String p_path, void *&p_library_handle, bool p_also_set_library_path = false);
+	virtual Error close_dynamic_library(void *p_library_handle);
+	virtual Error get_dynamic_library_symbol_handle(void *p_library_handle, const String p_name, void *&p_symbol_handle, bool p_optional = false);
 
 	virtual Error shell_open(String p_uri);
 
@@ -256,8 +262,8 @@ public:
 
 	void queue_key_event(KeyEvent &p_event);
 
-	OSUWP();
-	~OSUWP();
+	OS_UWP();
+	~OS_UWP();
 };
 
 #endif

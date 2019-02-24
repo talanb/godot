@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,54 +27,56 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #include "option_button.h"
-#include "print_string.h"
+#include "core/print_string.h"
 
 Size2 OptionButton::get_minimum_size() const {
 
 	Size2 minsize = Button::get_minimum_size();
 
 	if (has_icon("arrow"))
-		minsize.width += Control::get_icon("arrow")->get_width();
+		minsize.width += Control::get_icon("arrow")->get_width() + get_constant("hseparation");
 
 	return minsize;
 }
 
 void OptionButton::_notification(int p_what) {
 
-	switch (p_what) {
+	if (p_what == NOTIFICATION_DRAW) {
 
-		case NOTIFICATION_DRAW: {
+		if (!has_icon("arrow"))
+			return;
 
-			if (!has_icon("arrow"))
-				return;
+		RID ci = get_canvas_item();
+		Ref<Texture> arrow = Control::get_icon("arrow");
+		Ref<StyleBox> normal = get_stylebox("normal");
+		Color clr = Color(1, 1, 1);
+		if (get_constant("modulate_arrow")) {
+			switch (get_draw_mode()) {
+				case DRAW_PRESSED:
+					clr = get_color("font_color_pressed");
+					break;
+				case DRAW_HOVER:
+					clr = get_color("font_color_hover");
+					break;
+				case DRAW_DISABLED:
+					clr = get_color("font_color_disabled");
+					break;
+				default:
+					clr = get_color("font_color");
+			}
+		}
 
-			RID ci = get_canvas_item();
-			Ref<Texture> arrow = Control::get_icon("arrow");
-			Ref<StyleBox> normal = get_stylebox("normal");
-			Color clr = Color(1, 1, 1);
-			if (get_constant("modulate_arrow"))
-				switch (get_draw_mode()) {
-					case DRAW_PRESSED:
-						clr = get_color("font_color_pressed");
-						break;
-					case DRAW_HOVER:
-						clr = get_color("font_color_hover");
-						break;
-					case DRAW_DISABLED:
-						clr = get_color("font_color_disabled");
-						break;
-					default:
-						clr = get_color("font_color");
-				}
+		Size2 size = get_size();
 
-			Size2 size = get_size();
-
-			Point2 ofs(size.width - arrow->get_width() - get_constant("arrow_margin"), int(Math::abs((size.height - arrow->get_height()) / 2)));
-			arrow->draw(ci, ofs, clr);
-
-		} break;
+		Point2 ofs(size.width - arrow->get_width() - get_constant("arrow_margin"), int(Math::abs((size.height - arrow->get_height()) / 2)));
+		arrow->draw(ci, ofs, clr);
 	}
+}
+
+void OptionButton::_focused(int p_which) {
+	emit_signal("item_focused", p_which);
 }
 
 void OptionButton::_selected(int p_which) {
@@ -110,13 +112,13 @@ void OptionButton::pressed() {
 
 void OptionButton::add_icon_item(const Ref<Texture> &p_icon, const String &p_label, int p_ID) {
 
-	popup->add_icon_check_item(p_icon, p_label, p_ID);
+	popup->add_icon_radio_check_item(p_icon, p_label, p_ID);
 	if (popup->get_item_count() == 1)
 		select(0);
 }
 void OptionButton::add_item(const String &p_label, int p_ID) {
 
-	popup->add_check_item(p_label, p_ID);
+	popup->add_radio_check_item(p_label, p_ID);
 	if (popup->get_item_count() == 1)
 		select(0);
 }
@@ -158,6 +160,12 @@ int OptionButton::get_item_id(int p_idx) const {
 
 	return popup->get_item_id(p_idx);
 }
+
+int OptionButton::get_item_index(int p_id) const {
+
+	return popup->get_item_index(p_id);
+}
+
 Variant OptionButton::get_item_metadata(int p_idx) const {
 
 	return popup->get_item_metadata(p_idx);
@@ -244,6 +252,11 @@ void OptionButton::remove_item(int p_idx) {
 	popup->remove_item(p_idx);
 }
 
+PopupMenu *OptionButton::get_popup() const {
+
+	return popup;
+}
+
 Array OptionButton::_get_items() const {
 
 	Array items;
@@ -287,9 +300,10 @@ void OptionButton::get_translatable_strings(List<String> *p_strings) const {
 void OptionButton::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("_selected"), &OptionButton::_selected);
+	ClassDB::bind_method(D_METHOD("_focused"), &OptionButton::_focused);
 
 	ClassDB::bind_method(D_METHOD("add_item", "label", "id"), &OptionButton::add_item, DEFVAL(-1));
-	ClassDB::bind_method(D_METHOD("add_icon_item", "texture", "label", "id"), &OptionButton::add_icon_item);
+	ClassDB::bind_method(D_METHOD("add_icon_item", "texture", "label", "id"), &OptionButton::add_icon_item, DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("set_item_text", "idx", "text"), &OptionButton::set_item_text);
 	ClassDB::bind_method(D_METHOD("set_item_icon", "idx", "texture"), &OptionButton::set_item_icon);
 	ClassDB::bind_method(D_METHOD("set_item_disabled", "idx", "disabled"), &OptionButton::set_item_disabled);
@@ -298,6 +312,7 @@ void OptionButton::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_item_text", "idx"), &OptionButton::get_item_text);
 	ClassDB::bind_method(D_METHOD("get_item_icon", "idx"), &OptionButton::get_item_icon);
 	ClassDB::bind_method(D_METHOD("get_item_id", "idx"), &OptionButton::get_item_id);
+	ClassDB::bind_method(D_METHOD("get_item_index", "id"), &OptionButton::get_item_index);
 	ClassDB::bind_method(D_METHOD("get_item_metadata", "idx"), &OptionButton::get_item_metadata);
 	ClassDB::bind_method(D_METHOD("is_item_disabled", "idx"), &OptionButton::is_item_disabled);
 	ClassDB::bind_method(D_METHOD("get_item_count"), &OptionButton::get_item_count);
@@ -310,25 +325,31 @@ void OptionButton::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("remove_item", "idx"), &OptionButton::remove_item);
 	ClassDB::bind_method(D_METHOD("_select_int"), &OptionButton::_select_int);
 
+	ClassDB::bind_method(D_METHOD("get_popup"), &OptionButton::get_popup);
+
 	ClassDB::bind_method(D_METHOD("_set_items"), &OptionButton::_set_items);
 	ClassDB::bind_method(D_METHOD("_get_items"), &OptionButton::_get_items);
 
+	ADD_PROPERTY(PropertyInfo(Variant::ARRAY, "items", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NOEDITOR | PROPERTY_USAGE_INTERNAL), "_set_items", "_get_items");
+	// "selected" property must come after "items", otherwise GH-10213 occurs
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "selected"), "_select_int", "get_selected");
-	ADD_PROPERTY(PropertyInfo(Variant::ARRAY, "items", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NOEDITOR), "_set_items", "_get_items");
 	ADD_SIGNAL(MethodInfo("item_selected", PropertyInfo(Variant::INT, "ID")));
+	ADD_SIGNAL(MethodInfo("item_focused", PropertyInfo(Variant::INT, "ID")));
 }
 
 OptionButton::OptionButton() {
 
-	popup = memnew(PopupMenu);
-	popup->hide();
-	popup->set_as_toplevel(true);
-	popup->set_pass_on_modal_close_click(false);
-	add_child(popup);
-	popup->connect("id_pressed", this, "_selected");
-
 	current = -1;
 	set_text_align(ALIGN_LEFT);
+	set_action_mode(ACTION_MODE_BUTTON_PRESS);
+
+	popup = memnew(PopupMenu);
+	popup->hide();
+	add_child(popup);
+	popup->set_as_toplevel(true);
+	popup->set_pass_on_modal_close_click(false);
+	popup->connect("id_pressed", this, "_selected");
+	popup->connect("id_focused", this, "_focused");
 }
 
 OptionButton::~OptionButton() {

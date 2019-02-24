@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,10 +27,10 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #include "base_button.h"
 
-#include "os/keyboard.h"
-#include "print_string.h"
+#include "core/os/keyboard.h"
 #include "scene/main/viewport.h"
 #include "scene/scene_string_names.h"
 
@@ -59,7 +59,7 @@ void BaseButton::_gui_input(Ref<InputEvent> p_event) {
 	Ref<InputEventMouseButton> b = p_event;
 
 	if (b.is_valid()) {
-		if (status.disabled || b->get_button_index() != 1)
+		if (status.disabled || ((1 << (b->get_button_index() - 1)) & button_mask) == 0)
 			return;
 
 		if (status.pressing_button)
@@ -82,16 +82,16 @@ void BaseButton::_gui_input(Ref<InputEvent> p_event) {
 						get_script_instance()->call(SceneStringNames::get_singleton()->_pressed, NULL, 0, ce);
 					}
 
-					emit_signal("pressed");
 					_unpress_group();
+					emit_signal("pressed");
 
 				} else {
 
 					status.pressed = !status.pressed;
 					pressed();
 
-					emit_signal("pressed");
 					_unpress_group();
+					emit_signal("pressed");
 
 					toggled(status.pressed);
 					if (get_script_instance()) {
@@ -135,6 +135,7 @@ void BaseButton::_gui_input(Ref<InputEvent> p_event) {
 						get_script_instance()->call(SceneStringNames::get_singleton()->_pressed, NULL, 0, ce);
 					}
 
+					_unpress_group();
 					emit_signal("pressed");
 
 				} else {
@@ -142,6 +143,7 @@ void BaseButton::_gui_input(Ref<InputEvent> p_event) {
 					status.pressed = !status.pressed;
 
 					pressed();
+					_unpress_group();
 					emit_signal("pressed");
 
 					toggled(status.pressed);
@@ -150,8 +152,6 @@ void BaseButton::_gui_input(Ref<InputEvent> p_event) {
 					}
 					emit_signal("toggled", status.pressed);
 				}
-
-				_unpress_group();
 			}
 
 			status.press_attempt = false;
@@ -210,12 +210,19 @@ void BaseButton::_gui_input(Ref<InputEvent> p_event) {
 				if (!toggle_mode) { //mouse press attempt
 
 					pressed();
+					if (get_script_instance()) {
+						Variant::CallError ce;
+						get_script_instance()->call(SceneStringNames::get_singleton()->_pressed, NULL, 0, ce);
+					}
+
+					_unpress_group();
 					emit_signal("pressed");
 				} else {
 
 					status.pressed = !status.pressed;
 
 					pressed();
+					_unpress_group();
 					emit_signal("pressed");
 
 					toggled(status.pressed);
@@ -224,8 +231,6 @@ void BaseButton::_gui_input(Ref<InputEvent> p_event) {
 					}
 					emit_signal("toggled", status.pressed);
 				}
-
-				_unpress_group();
 			}
 
 			accept_event();
@@ -246,7 +251,7 @@ void BaseButton::_notification(int p_what) {
 		status.hovering = false;
 		update();
 	}
-	if (p_what == NOTIFICATION_DRAG_BEGIN) {
+	if (p_what == NOTIFICATION_DRAG_BEGIN || p_what == NOTIFICATION_SCROLL_BEGIN) {
 
 		if (status.press_attempt) {
 			status.press_attempt = false;
@@ -306,14 +311,20 @@ void BaseButton::toggled(bool p_pressed) {
 }
 
 void BaseButton::set_disabled(bool p_disabled) {
+	if (status.disabled == p_disabled)
+		return;
 
 	status.disabled = p_disabled;
+	if (p_disabled) {
+		if (!toggle_mode) {
+			status.pressed = false;
+		}
+		status.press_attempt = false;
+		status.pressing_inside = false;
+		status.pressing_button = 0;
+	}
 	update();
 	_change_notify("disabled");
-	if (p_disabled)
-		set_focus_mode(FOCUS_NONE);
-	else
-		set_focus_mode(enabled_focus_mode);
 }
 
 bool BaseButton::is_disabled() const {
@@ -357,8 +368,9 @@ BaseButton::DrawMode BaseButton::get_draw_mode() const {
 		return DRAW_DISABLED;
 	};
 
-	//print_line("press attempt: "+itos(status.press_attempt)+" hover: "+itos(status.hovering)+" pressed: "+itos(status.pressed));
-	if (status.press_attempt == false && status.hovering && !status.pressed) {
+	if (!status.press_attempt && status.hovering) {
+		if (status.pressed)
+			return DRAW_HOVER_PRESSED;
 
 		return DRAW_HOVER;
 	} else {
@@ -394,6 +406,16 @@ bool BaseButton::is_toggle_mode() const {
 	return toggle_mode;
 }
 
+void BaseButton::set_shortcut_in_tooltip(bool p_on) {
+
+	shortcut_in_tooltip = p_on;
+}
+
+bool BaseButton::is_shortcut_in_tooltip_enabled() const {
+
+	return shortcut_in_tooltip;
+}
+
 void BaseButton::set_action_mode(ActionMode p_mode) {
 
 	action_mode = p_mode;
@@ -402,6 +424,16 @@ void BaseButton::set_action_mode(ActionMode p_mode) {
 BaseButton::ActionMode BaseButton::get_action_mode() const {
 
 	return action_mode;
+}
+
+void BaseButton::set_button_mask(int p_mask) {
+
+	button_mask = p_mask;
+}
+
+int BaseButton::get_button_mask() const {
+
+	return button_mask;
 }
 
 void BaseButton::set_enabled_focus_mode(FocusMode p_mode) {
@@ -449,12 +481,12 @@ void BaseButton::_unhandled_input(Ref<InputEvent> p_event) {
 String BaseButton::get_tooltip(const Point2 &p_pos) const {
 
 	String tooltip = Control::get_tooltip(p_pos);
-	if (shortcut.is_valid() && shortcut->is_valid()) {
-		if (tooltip.find("$sc") != -1) {
-			tooltip = tooltip.replace_first("$sc", "(" + shortcut->get_as_text() + ")");
-		} else {
-			tooltip += " (" + shortcut->get_as_text() + ")";
+	if (shortcut_in_tooltip && shortcut.is_valid() && shortcut->is_valid()) {
+		String text = shortcut->get_name() + " (" + shortcut->get_as_text() + ")";
+		if (shortcut->get_name().nocasecmp_to(tooltip) != 0) {
+			text += "\n" + tooltip;
 		}
+		tooltip = text;
 	}
 	return tooltip;
 }
@@ -488,10 +520,14 @@ void BaseButton::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("is_hovered"), &BaseButton::is_hovered);
 	ClassDB::bind_method(D_METHOD("set_toggle_mode", "enabled"), &BaseButton::set_toggle_mode);
 	ClassDB::bind_method(D_METHOD("is_toggle_mode"), &BaseButton::is_toggle_mode);
+	ClassDB::bind_method(D_METHOD("set_shortcut_in_tooltip", "enabled"), &BaseButton::set_shortcut_in_tooltip);
+	ClassDB::bind_method(D_METHOD("is_shortcut_in_tooltip_enabled"), &BaseButton::is_shortcut_in_tooltip_enabled);
 	ClassDB::bind_method(D_METHOD("set_disabled", "disabled"), &BaseButton::set_disabled);
 	ClassDB::bind_method(D_METHOD("is_disabled"), &BaseButton::is_disabled);
 	ClassDB::bind_method(D_METHOD("set_action_mode", "mode"), &BaseButton::set_action_mode);
 	ClassDB::bind_method(D_METHOD("get_action_mode"), &BaseButton::get_action_mode);
+	ClassDB::bind_method(D_METHOD("set_button_mask", "mask"), &BaseButton::set_button_mask);
+	ClassDB::bind_method(D_METHOD("get_button_mask"), &BaseButton::get_button_mask);
 	ClassDB::bind_method(D_METHOD("get_draw_mode"), &BaseButton::get_draw_mode);
 	ClassDB::bind_method(D_METHOD("set_enabled_focus_mode", "mode"), &BaseButton::set_enabled_focus_mode);
 	ClassDB::bind_method(D_METHOD("get_enabled_focus_mode"), &BaseButton::get_enabled_focus_mode);
@@ -503,16 +539,18 @@ void BaseButton::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_button_group"), &BaseButton::get_button_group);
 
 	BIND_VMETHOD(MethodInfo("_pressed"));
-	BIND_VMETHOD(MethodInfo("_toggled", PropertyInfo(Variant::BOOL, "pressed")));
+	BIND_VMETHOD(MethodInfo("_toggled", PropertyInfo(Variant::BOOL, "button_pressed")));
 
 	ADD_SIGNAL(MethodInfo("pressed"));
 	ADD_SIGNAL(MethodInfo("button_up"));
 	ADD_SIGNAL(MethodInfo("button_down"));
-	ADD_SIGNAL(MethodInfo("toggled", PropertyInfo(Variant::BOOL, "pressed")));
-	ADD_PROPERTYNZ(PropertyInfo(Variant::BOOL, "disabled"), "set_disabled", "is_disabled");
+	ADD_SIGNAL(MethodInfo("toggled", PropertyInfo(Variant::BOOL, "button_pressed")));
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "disabled"), "set_disabled", "is_disabled");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "toggle_mode"), "set_toggle_mode", "is_toggle_mode");
-	ADD_PROPERTYNZ(PropertyInfo(Variant::BOOL, "pressed"), "set_pressed", "is_pressed");
-	ADD_PROPERTYNO(PropertyInfo(Variant::INT, "action_mode", PROPERTY_HINT_ENUM, "Button Press,Button Release"), "set_action_mode", "get_action_mode");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "shortcut_in_tooltip"), "set_shortcut_in_tooltip", "is_shortcut_in_tooltip_enabled");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "pressed"), "set_pressed", "is_pressed");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "action_mode", PROPERTY_HINT_ENUM, "Button Press,Button Release"), "set_action_mode", "get_action_mode");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "button_mask", PROPERTY_HINT_FLAGS, "Mouse Left, Mouse Right, Mouse Middle"), "set_button_mask", "get_button_mask");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "enabled_focus_mode", PROPERTY_HINT_ENUM, "None,Click,All"), "set_enabled_focus_mode", "get_enabled_focus_mode");
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "shortcut", PROPERTY_HINT_RESOURCE_TYPE, "ShortCut"), "set_shortcut", "get_shortcut");
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "group", PROPERTY_HINT_RESOURCE_TYPE, "ButtonGroup"), "set_button_group", "get_button_group");
@@ -521,6 +559,7 @@ void BaseButton::_bind_methods() {
 	BIND_ENUM_CONSTANT(DRAW_PRESSED);
 	BIND_ENUM_CONSTANT(DRAW_HOVER);
 	BIND_ENUM_CONSTANT(DRAW_DISABLED);
+	BIND_ENUM_CONSTANT(DRAW_HOVER_PRESSED);
 
 	BIND_ENUM_CONSTANT(ACTION_MODE_BUTTON_PRESS);
 	BIND_ENUM_CONSTANT(ACTION_MODE_BUTTON_RELEASE);
@@ -529,6 +568,7 @@ void BaseButton::_bind_methods() {
 BaseButton::BaseButton() {
 
 	toggle_mode = false;
+	shortcut_in_tooltip = true;
 	status.pressed = false;
 	status.press_attempt = false;
 	status.hovering = false;
@@ -538,13 +578,14 @@ BaseButton::BaseButton() {
 	set_focus_mode(FOCUS_ALL);
 	enabled_focus_mode = FOCUS_ALL;
 	action_mode = ACTION_MODE_BUTTON_RELEASE;
+	button_mask = BUTTON_MASK_LEFT;
+}
+
+BaseButton::~BaseButton() {
 
 	if (button_group.is_valid()) {
 		button_group->buttons.erase(this);
 	}
-}
-
-BaseButton::~BaseButton() {
 }
 
 void ButtonGroup::get_buttons(List<BaseButton *> *r_buttons) {
@@ -552,6 +593,16 @@ void ButtonGroup::get_buttons(List<BaseButton *> *r_buttons) {
 	for (Set<BaseButton *>::Element *E = buttons.front(); E; E = E->next()) {
 		r_buttons->push_back(E->get());
 	}
+}
+
+Array ButtonGroup::_get_buttons() {
+
+	Array btns;
+	for (Set<BaseButton *>::Element *E = buttons.front(); E; E = E->next()) {
+		btns.push_back(E->get());
+	}
+
+	return btns;
 }
 
 BaseButton *ButtonGroup::get_pressed_button() {
@@ -567,6 +618,7 @@ BaseButton *ButtonGroup::get_pressed_button() {
 void ButtonGroup::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("get_pressed_button"), &ButtonGroup::get_pressed_button);
+	ClassDB::bind_method(D_METHOD("get_buttons"), &ButtonGroup::_get_buttons);
 }
 
 ButtonGroup::ButtonGroup() {

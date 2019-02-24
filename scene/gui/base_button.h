@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,6 +27,7 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #ifndef BASE_BUTTON_H
 #define BASE_BUTTON_H
 
@@ -48,7 +49,9 @@ public:
 	};
 
 private:
+	int button_mask;
 	bool toggle_mode;
+	bool shortcut_in_tooltip;
 	FocusMode enabled_focus_mode;
 	Ref<ShortCut> shortcut;
 
@@ -83,25 +86,32 @@ public:
 		DRAW_PRESSED,
 		DRAW_HOVER,
 		DRAW_DISABLED,
+		DRAW_HOVER_PRESSED,
 	};
 
 	DrawMode get_draw_mode() const;
 
 	/* Signals */
 
-	bool is_pressed() const; ///< return wether button is pressed (toggled in)
-	bool is_pressing() const; ///< return wether button is pressed (toggled in)
+	bool is_pressed() const; ///< return whether button is pressed (toggled in)
+	bool is_pressing() const; ///< return whether button is pressed (toggled in)
 	bool is_hovered() const;
 
 	void set_pressed(bool p_pressed); ///only works in toggle mode
 	void set_toggle_mode(bool p_on);
 	bool is_toggle_mode() const;
 
+	void set_shortcut_in_tooltip(bool p_on);
+	bool is_shortcut_in_tooltip_enabled() const;
+
 	void set_disabled(bool p_disabled);
 	bool is_disabled() const;
 
 	void set_action_mode(ActionMode p_mode);
 	ActionMode get_action_mode() const;
+
+	void set_button_mask(int p_mask);
+	int get_button_mask() const;
 
 	void set_enabled_focus_mode(FocusMode p_mode);
 	FocusMode get_enabled_focus_mode() const;
@@ -133,6 +143,7 @@ protected:
 public:
 	BaseButton *get_pressed_button();
 	void get_buttons(List<BaseButton *> *r_buttons);
+	Array _get_buttons();
 	ButtonGroup();
 };
 

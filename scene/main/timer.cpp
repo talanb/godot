@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,9 +27,10 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #include "timer.h"
 
-#include "engine.h"
+#include "core/engine.h"
 
 void Timer::_notification(int p_what) {
 
@@ -106,7 +107,10 @@ bool Timer::has_autostart() const {
 	return autostart;
 }
 
-void Timer::start() {
+void Timer::start(float p_time) {
+	if (p_time > 0) {
+		set_wait_time(p_time);
+	}
 	time_left = wait_time;
 	_set_process(true);
 }
@@ -184,7 +188,7 @@ void Timer::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_autostart", "enable"), &Timer::set_autostart);
 	ClassDB::bind_method(D_METHOD("has_autostart"), &Timer::has_autostart);
 
-	ClassDB::bind_method(D_METHOD("start"), &Timer::start);
+	ClassDB::bind_method(D_METHOD("start", "time_sec"), &Timer::start, DEFVAL(-1));
 	ClassDB::bind_method(D_METHOD("stop"), &Timer::stop);
 
 	ClassDB::bind_method(D_METHOD("set_paused", "paused"), &Timer::set_paused);
@@ -203,6 +207,8 @@ void Timer::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::REAL, "wait_time", PROPERTY_HINT_EXP_RANGE, "0.01,4096,0.01"), "set_wait_time", "get_wait_time");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "one_shot"), "set_one_shot", "is_one_shot");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "autostart"), "set_autostart", "has_autostart");
+	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "paused", PROPERTY_HINT_NONE, "", 0), "set_paused", "is_paused");
+	ADD_PROPERTY(PropertyInfo(Variant::REAL, "time_left", PROPERTY_HINT_NONE, "", 0), "", "get_time_left");
 
 	BIND_ENUM_CONSTANT(TIMER_PROCESS_PHYSICS);
 	BIND_ENUM_CONSTANT(TIMER_PROCESS_IDLE);

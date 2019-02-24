@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,6 +27,7 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #ifndef COLOR_PICKER_H
 #define COLOR_PICKER_H
 
@@ -66,6 +67,7 @@ private:
 
 	Color color;
 	bool raw_mode_enabled;
+	bool deferred_mode_enabled;
 	bool updating;
 	bool changing_color;
 	float h, s, v;
@@ -87,6 +89,9 @@ private:
 	void _screen_input(const Ref<InputEvent> &p_event);
 	void _add_preset_pressed();
 	void _screen_pick_pressed();
+	void _focus_enter();
+	void _focus_exit();
+	void _html_focus_exit();
 
 protected:
 	void _notification(int);
@@ -100,8 +105,14 @@ public:
 	Color get_pick_color() const;
 
 	void add_preset(const Color &p_color);
+	void erase_preset(const Color &p_color);
+	PoolColorArray get_presets() const;
+
 	void set_raw_mode(bool p_enabled);
 	bool is_raw_mode() const;
+
+	void set_deferred_mode(bool p_enabled);
+	bool is_deferred_mode() const;
 
 	void set_focus_on_line_edit();
 
@@ -114,9 +125,15 @@ class ColorPickerButton : public Button {
 
 	PopupPanel *popup;
 	ColorPicker *picker;
+	Color color;
+	bool edit_alpha;
 
 	void _color_changed(const Color &p_color);
+	void _modal_closed();
+
 	virtual void pressed();
+
+	void _update_picker();
 
 protected:
 	void _notification(int);

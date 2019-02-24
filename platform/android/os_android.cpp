@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,25 +27,24 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #include "os_android.h"
 
 #include "core/io/file_access_buffered_fa.h"
 #include "core/project_settings.h"
+#include "drivers/gles2/rasterizer_gles2.h"
 #include "drivers/gles3/rasterizer_gles3.h"
 #include "drivers/unix/dir_access_unix.h"
 #include "drivers/unix/file_access_unix.h"
 #include "file_access_android.h"
 #include "main/main.h"
 #include "servers/visual/visual_server_raster.h"
-//#include "servers/visual/visual_server_wrap_mt.h"
+#include "servers/visual/visual_server_wrap_mt.h"
 
-#ifdef ANDROID_NATIVE_ACTIVITY
-#include "dir_access_android.h"
-#include "file_access_android.h"
-#else
 #include "dir_access_jandroid.h"
 #include "file_access_jandroid.h"
-#endif
+
+#include <dlfcn.h>
 
 class AndroidLogger : public Logger {
 public:
@@ -58,12 +57,19 @@ public:
 
 int OS_Android::get_video_driver_count() const {
 
-	return 1;
+	return 2;
 }
 
 const char *OS_Android::get_video_driver_name(int p_driver) const {
 
-	return "GLES2";
+	switch (p_driver) {
+		case VIDEO_DRIVER_GLES3:
+			return "GLES3";
+		case VIDEO_DRIVER_GLES2:
+			return "GLES2";
+	}
+	ERR_EXPLAIN("Invalid video driver index " + itos(p_driver));
+	ERR_FAIL_V(NULL);
 }
 int OS_Android::get_audio_driver_count() const {
 
@@ -78,18 +84,6 @@ const char *OS_Android::get_audio_driver_name(int p_driver) const {
 void OS_Android::initialize_core() {
 
 	OS_Unix::initialize_core();
-
-#ifdef ANDROID_NATIVE_ACTIVITY
-
-	FileAccess::make_default<FileAccessAndroid>(FileAccess::ACCESS_RESOURCES);
-	FileAccess::make_default<FileAccessUnix>(FileAccess::ACCESS_USERDATA);
-	FileAccess::make_default<FileAccessUnix>(FileAccess::ACCESS_FILESYSTEM);
-	//FileAccessBufferedFA<FileAccessUnix>::make_default();
-	DirAccess::make_default<DirAccessAndroid>(DirAccess::ACCESS_RESOURCES);
-	DirAccess::make_default<DirAccessUnix>(DirAccess::ACCESS_USERDATA);
-	DirAccess::make_default<DirAccessUnix>(DirAccess::ACCESS_FILESYSTEM);
-
-#else
 
 	if (use_apk_expansion)
 		FileAccess::make_default<FileAccessUnix>(FileAccess::ACCESS_RESOURCES);
@@ -110,8 +104,6 @@ void OS_Android::initialize_core() {
 		DirAccess::make_default<DirAccessJAndroid>(DirAccess::ACCESS_RESOURCES);
 	DirAccess::make_default<DirAccessUnix>(DirAccess::ACCESS_USERDATA);
 	DirAccess::make_default<DirAccessUnix>(DirAccess::ACCESS_FILESYSTEM);
-
-#endif
 }
 
 void OS_Android::set_opengl_extensions(const char *p_gl_extensions) {
@@ -120,32 +112,72 @@ void OS_Android::set_opengl_extensions(const char *p_gl_extensions) {
 	gl_extensions = p_gl_extensions;
 }
 
-void OS_Android::initialize(const VideoMode &p_desired, int p_video_driver, int p_audio_driver) {
+int OS_Android::get_current_video_driver() const {
+	return video_driver_index;
+}
 
-	use_gl2 = p_video_driver != 1;
+Error OS_Android::initialize(const VideoMode &p_desired, int p_video_driver, int p_audio_driver) {
 
-	if (gfx_init_func)
-		gfx_init_func(gfx_init_ud, use_gl2);
+	bool use_gl3 = get_gl_version_code_func() >= 0x00030000;
+	use_gl3 = use_gl3 && (GLOBAL_GET("rendering/quality/driver/driver_name") == "GLES3");
+	bool gl_initialization_error = false;
 
-	AudioDriverManager::add_driver(&audio_driver_android);
+	while (true) {
+		if (use_gl3) {
+			if (RasterizerGLES3::is_viable() == OK) {
+				if (gfx_init_func)
+					gfx_init_func(gfx_init_ud, false);
+				RasterizerGLES3::register_config();
+				RasterizerGLES3::make_current();
+				break;
+			} else {
+				if (GLOBAL_GET("rendering/quality/driver/driver_fallback") == "Best") {
+					p_video_driver = VIDEO_DRIVER_GLES2;
+					use_gl3 = false;
+					continue;
+				} else {
+					gl_initialization_error = true;
+					break;
+				}
+			}
+		} else {
+			if (RasterizerGLES2::is_viable() == OK) {
+				if (gfx_init_func)
+					gfx_init_func(gfx_init_ud, true);
+				RasterizerGLES2::register_config();
+				RasterizerGLES2::make_current();
+				break;
+			} else {
+				gl_initialization_error = true;
+				break;
+			}
+		}
+	}
 
-	RasterizerGLES3::register_config();
-	RasterizerGLES3::make_current();
+	if (gl_initialization_error) {
+		OS::get_singleton()->alert("Your device does not support any of the supported OpenGL versions.\n"
+								   "Please try updating your Android version.",
+				"Unable to initialize Video driver");
+		return ERR_UNAVAILABLE;
+	}
+
+	video_driver_index = p_video_driver;
 
 	visual_server = memnew(VisualServerRaster);
-	/*	if (get_render_thread_mode() != RENDER_THREAD_UNSAFE) {
-
+	if (get_render_thread_mode() != RENDER_THREAD_UNSAFE) {
 		visual_server = memnew(VisualServerWrapMT(visual_server, false));
-	};*/
+	}
+
 	visual_server->init();
-	//	visual_server->cursor_set_visible(false, 0);
 
 	AudioDriverManager::initialize(p_audio_driver);
 
 	input = memnew(InputDefault);
 	input->set_fallback_mapping("Default Android Gamepad");
 
-	//power_manager = memnew(power_android);
+	//power_manager = memnew(PowerAndroid);
+
+	return OK;
 }
 
 void OS_Android::set_main_loop(MainLoop *p_main_loop) {
@@ -168,6 +200,15 @@ void OS_Android::alert(const String &p_alert, const String &p_title) {
 	//print("ALERT: %s\n", p_alert.utf8().get_data());
 	if (alert_func)
 		alert_func(p_alert, p_title);
+}
+
+Error OS_Android::open_dynamic_library(const String p_path, void *&p_library_handle, bool p_also_set_library_path) {
+	p_library_handle = dlopen(p_path.utf8().get_data(), RTLD_NOW);
+	if (!p_library_handle) {
+		ERR_EXPLAIN("Can't open dynamic library: " + p_path + ". Error: " + dlerror());
+		ERR_FAIL_V(ERR_CANT_OPEN);
+	}
+	return OK;
 }
 
 void OS_Android::set_mouse_show(bool p_show) {
@@ -195,12 +236,9 @@ int OS_Android::get_mouse_button_state() const {
 
 	return 0;
 }
+
 void OS_Android::set_window_title(const String &p_title) {
 }
-
-//interesting byt not yet
-//void set_clipboard(const String& p_text);
-//String get_clipboard() const;
 
 void OS_Android::set_video_mode(const VideoMode &p_video_mode, int p_screen) {
 }
@@ -246,6 +284,9 @@ bool OS_Android::can_draw() const {
 void OS_Android::set_cursor_shape(CursorShape p_shape) {
 
 	//android really really really has no mouse.. how amazing..
+}
+
+void OS_Android::set_custom_mouse_cursor(const RES &p_cursor, CursorShape p_shape, const Vector2 &p_hotspot) {
 }
 
 void OS_Android::main_loop_begin() {
@@ -308,24 +349,11 @@ void OS_Android::process_event(Ref<InputEvent> p_event) {
 
 void OS_Android::process_touch(int p_what, int p_pointer, const Vector<TouchPos> &p_points) {
 
-	//print_line("ev: "+itos(p_what)+" pnt: "+itos(p_pointer)+" pointc: "+itos(p_points.size()));
-
 	switch (p_what) {
 		case 0: { //gesture begin
 
 			if (touch.size()) {
 				//end all if exist
-				{
-					Ref<InputEventMouseButton> ev;
-					ev.instance();
-					ev->set_button_index(BUTTON_LEFT);
-					ev->set_button_mask(BUTTON_MASK_LEFT);
-					ev->set_pressed(false);
-					ev->set_position(touch[0].pos);
-					ev->set_global_position(touch[0].pos);
-					input->parse_input_event(ev);
-				}
-
 				for (int i = 0; i < touch.size(); i++) {
 
 					Ref<InputEventScreenTouch> ev;
@@ -339,23 +367,8 @@ void OS_Android::process_touch(int p_what, int p_pointer, const Vector<TouchPos>
 
 			touch.resize(p_points.size());
 			for (int i = 0; i < p_points.size(); i++) {
-				touch[i].id = p_points[i].id;
-				touch[i].pos = p_points[i].pos;
-			}
-
-			{
-				//send mouse
-				Ref<InputEventMouseButton> ev;
-				ev.instance();
-				// ev.type = Ref<InputEvent>::MOUSE_BUTTON;
-				ev->set_button_index(BUTTON_LEFT);
-				ev->set_button_mask(BUTTON_MASK_LEFT);
-				ev->set_pressed(true);
-				ev->set_position(touch[0].pos);
-				ev->set_global_position(touch[0].pos);
-				input->set_mouse_position(Point2(touch[0].pos.x, touch[0].pos.y));
-				last_mouse = touch[0].pos;
-				input->parse_input_event(ev);
+				touch.write[i].id = p_points[i].id;
+				touch.write[i].pos = p_points[i].pos;
 			}
 
 			//send touch
@@ -371,19 +384,6 @@ void OS_Android::process_touch(int p_what, int p_pointer, const Vector<TouchPos>
 
 		} break;
 		case 1: { //motion
-
-			if (p_points.size()) {
-				//send mouse, should look for point 0?
-				Ref<InputEventMouseMotion> ev;
-				ev.instance();
-				ev->set_button_mask(BUTTON_MASK_LEFT);
-				ev->set_position(p_points[0].pos);
-				input->set_mouse_position(Point2(ev->get_position().x, ev->get_position().y));
-				ev->set_speed(input->get_last_mouse_speed());
-				ev->set_relative(p_points[0].pos - last_mouse);
-				last_mouse = p_points[0].pos;
-				input->parse_input_event(ev);
-			}
 
 			ERR_FAIL_COND(touch.size() != p_points.size());
 
@@ -409,7 +409,7 @@ void OS_Android::process_touch(int p_what, int p_pointer, const Vector<TouchPos>
 				ev->set_position(p_points[idx].pos);
 				ev->set_relative(p_points[idx].pos - touch[i].pos);
 				input->parse_input_event(ev);
-				touch[i].pos = p_points[idx].pos;
+				touch.write[i].pos = p_points[idx].pos;
 			}
 
 		} break;
@@ -417,16 +417,6 @@ void OS_Android::process_touch(int p_what, int p_pointer, const Vector<TouchPos>
 
 			if (touch.size()) {
 				//end all if exist
-				Ref<InputEventMouseButton> ev;
-				ev.instance();
-				ev->set_button_index(BUTTON_LEFT);
-				ev->set_button_mask(BUTTON_MASK_LEFT);
-				ev->set_pressed(false);
-				ev->set_position(touch[0].pos);
-				ev->set_global_position(touch[0].pos);
-				input->set_mouse_position(Point2(touch[0].pos.x, touch[0].pos.y));
-				input->parse_input_event(ev);
-
 				for (int i = 0; i < touch.size(); i++) {
 
 					Ref<InputEventScreenTouch> ev;
@@ -438,25 +428,27 @@ void OS_Android::process_touch(int p_what, int p_pointer, const Vector<TouchPos>
 				}
 				touch.clear();
 			}
-
 		} break;
-		case 3: { // add tuchi
+		case 3: { // add touch
 
-			ERR_FAIL_INDEX(p_pointer, p_points.size());
+			for (int i = 0; i < p_points.size(); i++) {
+				if (p_points[i].id == p_pointer) {
+					TouchPos tp = p_points[i];
+					touch.push_back(tp);
 
-			TouchPos tp = p_points[p_pointer];
-			touch.push_back(tp);
+					Ref<InputEventScreenTouch> ev;
+					ev.instance();
 
-			Ref<InputEventScreenTouch> ev;
-			ev.instance();
+					ev->set_index(tp.id);
+					ev->set_pressed(true);
+					ev->set_position(tp.pos);
+					input->parse_input_event(ev);
 
-			ev->set_index(tp.id);
-			ev->set_pressed(true);
-			ev->set_position(tp.pos);
-			input->parse_input_event(ev);
-
+					break;
+				}
+			}
 		} break;
-		case 4: {
+		case 4: { // remove touch
 
 			for (int i = 0; i < touch.size(); i++) {
 				if (touch[i].id == p_pointer) {
@@ -468,10 +460,10 @@ void OS_Android::process_touch(int p_what, int p_pointer, const Vector<TouchPos>
 					ev->set_position(touch[i].pos);
 					input->parse_input_event(ev);
 					touch.remove(i);
-					i--;
+
+					break;
 				}
 			}
-
 		} break;
 	}
 }
@@ -573,7 +565,7 @@ Error OS_Android::shell_open(String p_uri) {
 
 String OS_Android::get_resource_dir() const {
 
-	return "/"; //android has it's own filesystem for resources inside the APK
+	return "/"; //android has its own filesystem for resources inside the APK
 }
 
 String OS_Android::get_locale() const {
@@ -581,6 +573,23 @@ String OS_Android::get_locale() const {
 	if (get_locale_func)
 		return get_locale_func();
 	return OS_Unix::get_locale();
+}
+
+void OS_Android::set_clipboard(const String &p_text) {
+
+	if (set_clipboard_func) {
+		set_clipboard_func(p_text);
+	} else {
+		OS_Unix::set_clipboard(p_text);
+	}
+}
+
+String OS_Android::get_clipboard() const {
+	if (get_clipboard_func) {
+		return get_clipboard_func();
+	}
+
+	return OS_Unix::get_clipboard();
 }
 
 String OS_Android::get_model_name() const {
@@ -647,13 +656,14 @@ String OS_Android::get_unique_id() const {
 	return OS::get_unique_id();
 }
 
-Error OS_Android::native_video_play(String p_path, float p_volume) {
+Error OS_Android::native_video_play(String p_path, float p_volume, String p_audio_track, String p_subtitle_track) {
+	// FIXME: Add support for volume, audio and subtitle tracks
 	if (video_play_func)
 		video_play_func(p_path);
 	return OK;
 }
 
-bool OS_Android::native_video_is_playing() {
+bool OS_Android::native_video_is_playing() const {
 	if (video_is_playing_func)
 		return video_is_playing_func();
 	return false;
@@ -716,7 +726,7 @@ bool OS_Android::_check_internal_feature_support(const String &p_feature) {
 	return false;
 }
 
-OS_Android::OS_Android(GFXInitFunc p_gfx_init_func, void *p_gfx_init_ud, OpenURIFunc p_open_uri_func, GetUserDataDirFunc p_get_user_data_dir_func, GetLocaleFunc p_get_locale_func, GetModelFunc p_get_model_func, GetScreenDPIFunc p_get_screen_dpi_func, ShowVirtualKeyboardFunc p_show_vk, HideVirtualKeyboardFunc p_hide_vk, VirtualKeyboardHeightFunc p_vk_height_func, SetScreenOrientationFunc p_screen_orient, GetUniqueIDFunc p_get_unique_id, GetSystemDirFunc p_get_sdir_func, VideoPlayFunc p_video_play_func, VideoIsPlayingFunc p_video_is_playing_func, VideoPauseFunc p_video_pause_func, VideoStopFunc p_video_stop_func, SetKeepScreenOnFunc p_set_keep_screen_on_func, AlertFunc p_alert_func, bool p_use_apk_expansion) {
+OS_Android::OS_Android(GFXInitFunc p_gfx_init_func, void *p_gfx_init_ud, OpenURIFunc p_open_uri_func, GetUserDataDirFunc p_get_user_data_dir_func, GetLocaleFunc p_get_locale_func, GetModelFunc p_get_model_func, GetScreenDPIFunc p_get_screen_dpi_func, ShowVirtualKeyboardFunc p_show_vk, HideVirtualKeyboardFunc p_hide_vk, VirtualKeyboardHeightFunc p_vk_height_func, SetScreenOrientationFunc p_screen_orient, GetUniqueIDFunc p_get_unique_id, GetSystemDirFunc p_get_sdir_func, GetGLVersionCodeFunc p_get_gl_version_func, VideoPlayFunc p_video_play_func, VideoIsPlayingFunc p_video_is_playing_func, VideoPauseFunc p_video_pause_func, VideoStopFunc p_video_stop_func, SetKeepScreenOnFunc p_set_keep_screen_on_func, AlertFunc p_alert_func, SetClipboardFunc p_set_clipboard_func, GetClipboardFunc p_get_clipboard_func, bool p_use_apk_expansion) {
 
 	use_apk_expansion = p_use_apk_expansion;
 	default_videomode.width = 800;
@@ -738,6 +748,7 @@ OS_Android::OS_Android(GFXInitFunc p_gfx_init_func, void *p_gfx_init_ud, OpenURI
 	get_screen_dpi_func = p_get_screen_dpi_func;
 	get_unique_id_func = p_get_unique_id;
 	get_system_dir_func = p_get_sdir_func;
+	get_gl_version_code_func = p_get_gl_version_func;
 
 	video_play_func = p_video_play_func;
 	video_is_playing_func = p_video_is_playing_func;
@@ -748,6 +759,9 @@ OS_Android::OS_Android(GFXInitFunc p_gfx_init_func, void *p_gfx_init_ud, OpenURI
 	hide_virtual_keyboard_func = p_hide_vk;
 	get_virtual_keyboard_height_func = p_vk_height_func;
 
+	set_clipboard_func = p_set_clipboard_func;
+	get_clipboard_func = p_get_clipboard_func;
+
 	set_screen_orientation_func = p_screen_orient;
 	set_keep_screen_on_func = p_set_keep_screen_on_func;
 	alert_func = p_alert_func;
@@ -756,6 +770,8 @@ OS_Android::OS_Android(GFXInitFunc p_gfx_init_func, void *p_gfx_init_ud, OpenURI
 	Vector<Logger *> loggers;
 	loggers.push_back(memnew(AndroidLogger));
 	_set_logger(memnew(CompositeLogger(loggers)));
+
+	AudioDriverManager::add_driver(&audio_driver_android);
 }
 
 OS_Android::~OS_Android() {

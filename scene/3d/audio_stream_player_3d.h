@@ -1,3 +1,33 @@
+/*************************************************************************/
+/*  audio_stream_player_3d.h                                             */
+/*************************************************************************/
+/*                       This file is part of:                           */
+/*                           GODOT ENGINE                                */
+/*                      https://godotengine.org                          */
+/*************************************************************************/
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
+/*                                                                       */
+/* Permission is hereby granted, free of charge, to any person obtaining */
+/* a copy of this software and associated documentation files (the       */
+/* "Software"), to deal in the Software without restriction, including   */
+/* without limitation the rights to use, copy, modify, merge, publish,   */
+/* distribute, sublicense, and/or sell copies of the Software, and to    */
+/* permit persons to whom the Software is furnished to do so, subject to */
+/* the following conditions:                                             */
+/*                                                                       */
+/* The above copyright notice and this permission notice shall be        */
+/* included in all copies or substantial portions of the Software.       */
+/*                                                                       */
+/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,       */
+/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF    */
+/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.*/
+/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY  */
+/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,  */
+/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
+/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
+/*************************************************************************/
+
 #ifndef AUDIO_STREAM_PLAYER_3D_H
 #define AUDIO_STREAM_PLAYER_3D_H
 
@@ -76,7 +106,12 @@ private:
 	float unit_db;
 	float unit_size;
 	float max_db;
+	float pitch_scale;
 	bool autoplay;
+	bool stream_paused;
+	bool stream_fade_in;
+	bool stream_fade_out;
+	bool stream_stop;
 	StringName bus;
 
 	void _mix_audio();
@@ -123,6 +158,9 @@ public:
 	void set_max_db(float p_boost);
 	float get_max_db() const;
 
+	void set_pitch_scale(float p_pitch_scale);
+	float get_pitch_scale() const;
+
 	void play(float p_from_pos = 0.0);
 	void seek(float p_seconds);
 	void stop();
@@ -164,6 +202,9 @@ public:
 
 	void set_doppler_tracking(DopplerTracking p_tracking);
 	DopplerTracking get_doppler_tracking() const;
+
+	void set_stream_paused(bool p_pause);
+	bool get_stream_paused() const;
 
 	AudioStreamPlayer3D();
 	~AudioStreamPlayer3D();

@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,6 +27,7 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #ifdef GAME_CENTER_ENABLED
 
 #include "game_center.h"
@@ -138,7 +139,6 @@ Error GameCenter::post_score(Variant p_score) {
 
 	[GKScore reportScores:@[ reporter ]
 			withCompletionHandler:^(NSError *error) {
-
 				Dictionary ret;
 				ret["type"] = "post_score";
 				if (error == nil) {
@@ -176,7 +176,6 @@ Error GameCenter::award_achievement(Variant p_params) {
 
 	[GKAchievement reportAchievements:@[ achievement ]
 				withCompletionHandler:^(NSError *error) {
-
 					Dictionary ret;
 					ret["type"] = "award_achievement";
 					if (error == nil) {
@@ -195,7 +194,6 @@ Error GameCenter::award_achievement(Variant p_params) {
 void GameCenter::request_achievement_descriptions() {
 
 	[GKAchievementDescription loadAchievementDescriptionsWithCompletionHandler:^(NSArray *descriptions, NSError *error) {
-
 		Dictionary ret;
 		ret["type"] = "achievement_descriptions";
 		if (error == nil) {
@@ -251,7 +249,6 @@ void GameCenter::request_achievement_descriptions() {
 void GameCenter::request_achievements() {
 
 	[GKAchievement loadAchievementsWithCompletionHandler:^(NSArray *achievements, NSError *error) {
-
 		Dictionary ret;
 		ret["type"] = "achievements";
 		if (error == nil) {
@@ -346,7 +343,6 @@ Error GameCenter::request_identity_verification_signature() {
 
 	GKLocalPlayer *player = [GKLocalPlayer localPlayer];
 	[player generateIdentityVerificationSignatureWithCompletionHandler:^(NSURL *publicKeyUrl, NSData *signature, NSData *salt, uint64_t timestamp, NSError *error) {
-
 		Dictionary ret;
 		ret["type"] = "identity_verification_signature";
 		if (error == nil) {

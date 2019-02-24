@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,11 +27,12 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #ifndef TILE_SET_H
 #define TILE_SET_H
 
 #include "core/array.h"
-#include "resource.h"
+#include "core/resource.h"
 #include "scene/2d/light_occluder_2d.h"
 #include "scene/2d/navigation_polygon.h"
 #include "scene/resources/shape_2d.h"
@@ -47,14 +48,17 @@ public:
 		Transform2D shape_transform;
 		Vector2 autotile_coord;
 		bool one_way_collision;
+		float one_way_collision_margin;
 
 		ShapeData() {
 			one_way_collision = false;
+			one_way_collision_margin = 1.0;
 		}
 	};
 
 	enum BitmaskMode {
 		BITMASK_2X2,
+		BITMASK_3X3_MINIMAL,
 		BITMASK_3X3
 	};
 
@@ -70,22 +74,29 @@ public:
 		BIND_BOTTOMRIGHT = 256
 	};
 
+	enum TileMode {
+		SINGLE_TILE,
+		AUTO_TILE,
+		ATLAS_TILE
+	};
+
 	struct AutotileData {
 		BitmaskMode bitmask_mode;
-		int spacing;
 		Size2 size;
+		int spacing;
 		Vector2 icon_coord;
 		Map<Vector2, uint16_t> flags;
 		Map<Vector2, Ref<OccluderPolygon2D> > occluder_map;
 		Map<Vector2, Ref<NavigationPolygon> > navpoly_map;
 		Map<Vector2, int> priority_map;
+		Map<Vector2, int> z_index_map;
 
 		// Default size to prevent invalid value
 		explicit AutotileData() :
+				bitmask_mode(BITMASK_2X2),
 				size(64, 64),
-				icon_coord(0, 0) {
-			bitmask_mode = BITMASK_2X2;
-		}
+				spacing(0),
+				icon_coord(0, 0) {}
 	};
 
 private:
@@ -102,14 +113,16 @@ private:
 		Vector2 navigation_polygon_offset;
 		Ref<NavigationPolygon> navigation_polygon;
 		Ref<ShaderMaterial> material;
+		TileMode tile_mode;
 		Color modulate;
-		bool is_autotile;
 		AutotileData autotile_data;
+		int z_index;
 
 		// Default modulate for back-compat
 		explicit TileData() :
+				tile_mode(SINGLE_TILE),
 				modulate(1, 1, 1),
-				is_autotile(false) {}
+				z_index(0) {}
 	};
 
 	Map<int, TileData> tile_map;
@@ -145,8 +158,8 @@ public:
 	void tile_set_region(int p_id, const Rect2 &p_region);
 	Rect2 tile_get_region(int p_id) const;
 
-	void tile_set_is_autotile(int p_id, bool p_is_autotile);
-	bool tile_get_is_autotile(int p_id) const;
+	void tile_set_tile_mode(int p_id, TileMode p_tile_mode);
+	TileMode tile_get_tile_mode(int p_id) const;
 
 	void autotile_set_icon_coordinate(int p_id, Vector2 coord);
 	Vector2 autotile_get_icon_coordinate(int p_id) const;
@@ -161,6 +174,10 @@ public:
 	void autotile_set_subtile_priority(int p_id, const Vector2 &p_coord, int p_priority);
 	int autotile_get_subtile_priority(int p_id, const Vector2 &p_coord);
 	const Map<Vector2, int> &autotile_get_priority_map(int p_id) const;
+
+	void autotile_set_z_index(int p_id, const Vector2 &p_coord, int p_z_index);
+	int autotile_get_z_index(int p_id, const Vector2 &p_coord);
+	const Map<Vector2, int> &autotile_get_z_index_map(int p_id) const;
 
 	void autotile_set_bitmask(int p_id, Vector2 p_coord, uint16_t p_flag);
 	uint16_t autotile_get_bitmask(int p_id, Vector2 p_coord);
@@ -178,6 +195,9 @@ public:
 
 	void tile_set_shape_one_way(int p_id, int p_shape_id, bool p_one_way);
 	bool tile_get_shape_one_way(int p_id, int p_shape_id) const;
+
+	void tile_set_shape_one_way_margin(int p_id, int p_shape_id, float p_margin);
+	float tile_get_shape_one_way_margin(int p_id, int p_shape_id) const;
 
 	void tile_clear_shapes(int p_id);
 	void tile_add_shape(int p_id, const Ref<Shape2D> &p_shape, const Transform2D &p_transform, bool p_one_way = false, const Vector2 &p_autotile_coord = Vector2());
@@ -212,6 +232,9 @@ public:
 	Ref<NavigationPolygon> autotile_get_navigation_polygon(int p_id, const Vector2 &p_coord) const;
 	const Map<Vector2, Ref<NavigationPolygon> > &autotile_get_navigation_map(int p_id) const;
 
+	void tile_set_z_index(int p_id, int p_z_index);
+	int tile_get_z_index(int p_id) const;
+
 	void remove_tile(int p_id);
 
 	bool has_tile(int p_id) const;
@@ -230,5 +253,6 @@ public:
 
 VARIANT_ENUM_CAST(TileSet::AutotileBindings);
 VARIANT_ENUM_CAST(TileSet::BitmaskMode);
+VARIANT_ENUM_CAST(TileSet::TileMode);
 
 #endif // TILE_SET_H

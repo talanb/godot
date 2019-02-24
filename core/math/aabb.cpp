@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,9 +27,10 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #include "aabb.h"
 
-#include "print_string.h"
+#include "core/print_string.h"
 
 real_t AABB::get_area() const {
 
@@ -244,7 +245,6 @@ Vector3 AABB::get_longest_axis() const {
 
 	if (size.z > max_size) {
 		axis = Vector3(0, 0, 1);
-		max_size = size.z;
 	}
 
 	return axis;
@@ -261,7 +261,6 @@ int AABB::get_longest_axis_index() const {
 
 	if (size.z > max_size) {
 		axis = 2;
-		max_size = size.z;
 	}
 
 	return axis;
@@ -279,7 +278,6 @@ Vector3 AABB::get_shortest_axis() const {
 
 	if (size.z < max_size) {
 		axis = Vector3(0, 0, 1);
-		max_size = size.z;
 	}
 
 	return axis;
@@ -296,7 +294,6 @@ int AABB::get_shortest_axis_index() const {
 
 	if (size.z < max_size) {
 		axis = 2;
-		max_size = size.z;
 	}
 
 	return axis;

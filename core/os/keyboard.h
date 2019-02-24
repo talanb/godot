@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,16 +27,14 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #ifndef KEYBOARD_H
 #define KEYBOARD_H
 
-#include "ustring.h"
-/**
-	@author Juan Linietsky <reduzio@gmail.com>
-*/
+#include "core/ustring.h"
 
 /**
-@author Juan Linietsky <reduzio@gmail.com>
+	@author Juan Linietsky <reduzio@gmail.com>
 */
 
 /*
@@ -330,6 +328,5 @@ const char *find_keycode_name(int p_keycode);
 int keycode_get_count();
 int keycode_get_value_by_index(int p_index);
 const char *keycode_get_name_by_index(int p_index);
-int latin_keyboard_keycode_convert(int p_keycode);
 
 #endif

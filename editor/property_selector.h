@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,6 +27,7 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #ifndef PROPERTYSELECTOR_H
 #define PROPERTYSELECTOR_H
 
@@ -59,6 +60,8 @@ class PropertySelector : public ConfirmationDialog {
 
 	void _item_selected();
 
+	Vector<Variant::Type> type_filter;
+
 protected:
 	void _notification(int p_what);
 	static void _bind_methods();
@@ -73,6 +76,8 @@ public:
 	void select_property_from_script(const Ref<Script> &p_script, const String &p_current = "");
 	void select_property_from_basic_type(Variant::Type p_type, const String &p_current = "");
 	void select_property_from_instance(Object *p_instance, const String &p_current = "");
+
+	void set_type_filter(const Vector<Variant::Type> &p_type_filter);
 
 	PropertySelector();
 };

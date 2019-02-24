@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -31,9 +31,9 @@
 #include "curve_editor_plugin.h"
 
 #include "canvas_item_editor_plugin.h"
-#include "core_string_names.h"
-#include "os/input.h"
-#include "os/keyboard.h"
+#include "core/core_string_names.h"
+#include "core/os/input.h"
+#include "core/os/keyboard.h"
 
 CurveEditor::CurveEditor() {
 	_selected_point = -1;
@@ -91,7 +91,7 @@ void CurveEditor::set_curve(Ref<Curve> curve) {
 }
 
 Size2 CurveEditor::get_minimum_size() const {
-	return Vector2(64, 64);
+	return Vector2(64, 150) * EDSCALE;
 }
 
 void CurveEditor::_notification(int p_what) {
@@ -177,7 +177,7 @@ void CurveEditor::on_gui_input(const Ref<InputEvent> &p_event) {
 					set_hover_point_index(i);
 					set_selected_point(i);
 
-					// This is to prevent the user from loosing a point out of view.
+					// This is to prevent the user from losing a point out of view.
 					if (point_pos.y < curve.get_min_value())
 						point_pos.y = curve.get_min_value();
 					else if (point_pos.y > curve.get_max_value())
@@ -205,13 +205,13 @@ void CurveEditor::on_gui_input(const Ref<InputEvent> &p_event) {
 						curve.set_point_left_tangent(_selected_point, tangent);
 
 						// Note: if a tangent is set to linear, it shouldn't be linked to the other
-						if (link && _selected_point != curve.get_point_count() - 1 && !curve.get_point_right_mode(_selected_point) != Curve::TANGENT_FREE)
+						if (link && _selected_point != (curve.get_point_count() - 1) && curve.get_point_right_mode(_selected_point) != Curve::TANGENT_LINEAR)
 							curve.set_point_right_tangent(_selected_point, tangent);
 
 					} else {
 						curve.set_point_right_tangent(_selected_point, tangent);
 
-						if (link && _selected_point != 0 && !curve.get_point_left_mode(_selected_point) != Curve::TANGENT_FREE)
+						if (link && _selected_point != 0 && curve.get_point_left_mode(_selected_point) != Curve::TANGENT_LINEAR)
 							curve.set_point_left_tangent(_selected_point, tangent);
 					}
 				}
@@ -347,7 +347,8 @@ void CurveEditor::open_context_menu(Vector2 pos) {
 				_context_menu->set_item_checked(_context_menu->get_item_index(CONTEXT_LINEAR), is_linear);
 
 			} else {
-				_context_menu->add_separator();
+				if (_selected_point > 0 || _selected_point + 1 < _curve_ref->get_point_count())
+					_context_menu->add_separator();
 
 				if (_selected_point > 0) {
 					_context_menu->add_check_item(TTR("Left linear"), CONTEXT_LEFT_LINEAR);
@@ -367,6 +368,7 @@ void CurveEditor::open_context_menu(Vector2 pos) {
 
 	_context_menu->add_submenu_item(TTR("Load preset"), _presets_menu->get_name());
 
+	_context_menu->set_size(Size2(0, 0));
 	_context_menu->popup();
 }
 
@@ -566,7 +568,6 @@ static void plot_curve_accurate(const Curve &curve, float step, T plot_func) {
 			Vector2 prev_pos = a;
 
 			float len = b.x - a.x;
-			//float step = 4.f / view_size.x;
 
 			for (float x = step; x < len; x += step) {
 				pos.x = a.x + x;
@@ -615,8 +616,8 @@ void CurveEditor::_draw() {
 	Vector2 min_edge = get_world_pos(Vector2(0, view_size.y));
 	Vector2 max_edge = get_world_pos(Vector2(view_size.x, 0));
 
-	const Color grid_color0 = get_color("grid_major_color", "Editor");
-	const Color grid_color1 = get_color("grid_minor_color", "Editor");
+	const Color grid_color0 = Color(1.0, 1.0, 1.0, 0.15);
+	const Color grid_color1 = Color(1.0, 1.0, 1.0, 0.07);
 	draw_line(Vector2(min_edge.x, curve.get_min_value()), Vector2(max_edge.x, curve.get_min_value()), grid_color0);
 	draw_line(Vector2(max_edge.x, curve.get_max_value()), Vector2(min_edge.x, curve.get_max_value()), grid_color0);
 	draw_line(Vector2(0, min_edge.y), Vector2(0, max_edge.y), grid_color0);
@@ -638,7 +639,7 @@ void CurveEditor::_draw() {
 
 	Ref<Font> font = get_font("font", "Label");
 	float font_height = font->get_height();
-	const Color text_color = get_color("font_color", "Editor");
+	Color text_color = get_color("font_color", "Editor");
 
 	{
 		// X axis
@@ -694,24 +695,6 @@ void CurveEditor::_draw() {
 	CanvasItemPlotCurve plot_func(*this, line_color, edge_line_color);
 	plot_curve_accurate(curve, 4.f / view_size.x, plot_func);
 
-	/*// TEST draw baked curve
-	{
-		Vector2 pos = Vector2(0, curve.interpolate_baked(0));
-		Vector2 prev_pos = pos;
-
-		float len = 1.0;
-		float step = 4.f / view_size.x;
-
-		for(float x = step; x < len; x += step) {
-			pos.x = x;
-			pos.y = curve.interpolate_baked(x);
-			draw_line(get_point_view_pos(prev_pos), get_point_view_pos(pos), Color(0,1,0));
-			prev_pos = pos;
-		}
-
-		draw_line(get_point_view_pos(prev_pos), get_point_view_pos(Vector2(1, curve.interpolate_baked(1))), Color(0,1,0));
-	}//*/
-
 	// Draw points
 
 	draw_set_transform_matrix(Transform2D());
@@ -737,6 +720,7 @@ void CurveEditor::_draw() {
 	// Help text
 
 	if (_selected_point > 0 && _selected_point + 1 < curve.get_point_count()) {
+		text_color.a *= 0.4;
 		draw_string(font, Vector2(50, font_height), TTR("Hold Shift to edit tangents individually"), text_color);
 	}
 }
@@ -767,87 +751,28 @@ void CurveEditor::_bind_methods() {
 
 //---------------
 
+bool EditorInspectorPluginCurve::can_handle(Object *p_object) {
+
+	return Object::cast_to<Curve>(p_object) != NULL;
+}
+
+void EditorInspectorPluginCurve::parse_begin(Object *p_object) {
+
+	Curve *curve = Object::cast_to<Curve>(p_object);
+	ERR_FAIL_COND(!curve);
+	Ref<Curve> c(curve);
+
+	CurveEditor *editor = memnew(CurveEditor);
+	editor->set_curve(curve);
+	add_custom_control(editor);
+}
+
 CurveEditorPlugin::CurveEditorPlugin(EditorNode *p_node) {
-	_editor_node = p_node;
-
-	_view = memnew(CurveEditor);
-	_view->set_custom_minimum_size(Size2(100, 128 * EDSCALE));
-	_view->hide();
-
-	_toggle_button = _editor_node->add_bottom_panel_item(get_name(), _view);
-	_toggle_button->hide();
+	Ref<EditorInspectorPluginCurve> curve_plugin;
+	curve_plugin.instance();
+	EditorInspector::add_inspector_plugin(curve_plugin);
 
 	get_editor_interface()->get_resource_previewer()->add_preview_generator(memnew(CurvePreviewGenerator));
-}
-
-CurveEditorPlugin::~CurveEditorPlugin() {
-}
-
-void CurveEditorPlugin::edit(Object *p_object) {
-
-	Ref<Curve> curve_ref;
-
-	if (_current_ref.is_valid()) {
-		CurveTexture *ct = Object::cast_to<CurveTexture>(*_current_ref);
-		if (ct)
-			ct->disconnect(CoreStringNames::get_singleton()->changed, this, "_curve_texture_changed");
-	}
-
-	if (p_object) {
-		Resource *res = Object::cast_to<Resource>(p_object);
-		ERR_FAIL_COND(res == NULL);
-		ERR_FAIL_COND(!handles(p_object));
-
-		_current_ref = Ref<Resource>(Object::cast_to<Resource>(p_object));
-
-		if (_current_ref.is_valid()) {
-			Curve *curve = Object::cast_to<Curve>(*_current_ref);
-			if (curve)
-				curve_ref = Ref<Curve>(curve);
-			else {
-				CurveTexture *ct = Object::cast_to<CurveTexture>(*_current_ref);
-				if (ct) {
-					ct->connect(CoreStringNames::get_singleton()->changed, this, "_curve_texture_changed");
-					curve_ref = ct->get_curve();
-				}
-			}
-		}
-
-	} else {
-		_current_ref = Ref<Resource>();
-	}
-
-	_view->set_curve(curve_ref);
-}
-
-bool CurveEditorPlugin::handles(Object *p_object) const {
-	// Both handled so that we can keep the curve editor open
-	return Object::cast_to<Curve>(p_object) || Object::cast_to<CurveTexture>(p_object);
-}
-
-void CurveEditorPlugin::make_visible(bool p_visible) {
-	if (p_visible) {
-		_toggle_button->show();
-		_editor_node->make_bottom_panel_item_visible(_view);
-	} else {
-		_toggle_button->hide();
-		if (_view->is_visible_in_tree())
-			_editor_node->hide_bottom_panel();
-	}
-}
-
-void CurveEditorPlugin::_curve_texture_changed() {
-	// If the curve is shown indirectly as a CurveTexture is edited,
-	// we need to monitor when the curve property gets assigned
-	CurveTexture *ct = Object::cast_to<CurveTexture>(*_current_ref);
-	if (ct) {
-		_view->set_curve(ct->get_curve());
-	}
-}
-
-void CurveEditorPlugin::_bind_methods() {
-
-	ClassDB::bind_method(D_METHOD("_curve_texture_changed"), &CurveEditorPlugin::_curve_texture_changed);
 }
 
 //-----------------------------------
@@ -857,25 +782,26 @@ bool CurvePreviewGenerator::handles(const String &p_type) const {
 	return p_type == "Curve";
 }
 
-Ref<Texture> CurvePreviewGenerator::generate(const Ref<Resource> &p_from) {
+Ref<Texture> CurvePreviewGenerator::generate(const Ref<Resource> &p_from, const Size2 p_size) const {
 
 	Ref<Curve> curve_ref = p_from;
 	ERR_FAIL_COND_V(curve_ref.is_null(), Ref<Texture>());
 	Curve &curve = **curve_ref;
 
+	// FIXME: Should be ported to use p_size as done in b2633a97
 	int thumbnail_size = EditorSettings::get_singleton()->get("filesystem/file_dialog/thumbnail_size");
 	thumbnail_size *= EDSCALE;
 	Ref<Image> img_ref;
 	img_ref.instance();
 	Image &im = **img_ref;
 
-	im.create(thumbnail_size, thumbnail_size, 0, Image::FORMAT_RGBA8);
+	im.create(thumbnail_size, thumbnail_size / 2, 0, Image::FORMAT_RGBA8);
 
 	im.lock();
 
 	Color bg_color(0.1, 0.1, 0.1, 1.0);
 	for (int i = 0; i < thumbnail_size; i++) {
-		for (int j = 0; j < thumbnail_size; j++) {
+		for (int j = 0; j < thumbnail_size / 2; j++) {
 			im.set_pixel(i, j, bg_color);
 		}
 	}

@@ -3,10 +3,10 @@
 /*************************************************************************/
 /*                       This file is part of:                           */
 /*                           GODOT ENGINE                                */
-/*                    http://www.godotengine.org                         */
+/*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -45,7 +45,11 @@ void PluginScriptLanguage::init() {
 }
 
 String PluginScriptLanguage::get_type() const {
-	return String(_desc.type);
+	// We should use _desc.type here, however the returned type is used to
+	// query ClassDB which would complain given the type is not registered
+	// from his point of view...
+	// To solve this we just use a more generic (but present in ClassDB) type.
+	return String("PluginScript");
 }
 
 String PluginScriptLanguage::get_extension() const {
@@ -99,11 +103,12 @@ Ref<Script> PluginScriptLanguage::get_template(const String &p_class_name, const
 	if (_desc.get_template_source_code) {
 		godot_string src = _desc.get_template_source_code(_data, (godot_string *)&p_class_name, (godot_string *)&p_base_class_name);
 		script->set_source_code(*(String *)&src);
+		godot_string_destroy(&src);
 	}
 	return script;
 }
 
-bool PluginScriptLanguage::validate(const String &p_script, int &r_line_error, int &r_col_error, String &r_test_error, const String &p_path, List<String> *r_functions) const {
+bool PluginScriptLanguage::validate(const String &p_script, int &r_line_error, int &r_col_error, String &r_test_error, const String &p_path, List<String> *r_functions, List<ScriptLanguage::Warning> *r_warnings, Set<int> *r_safe_lines) const {
 	PoolStringArray functions;
 	if (_desc.validate) {
 		bool ret = _desc.validate(
@@ -168,8 +173,7 @@ Error PluginScriptLanguage::complete_code(const String &p_code, const String &p_
 		for (int i = 0; i < options.size(); i++) {
 			r_options->push_back(String(options[i]));
 		}
-		Error err = *(Error *)tmp;
-		return err;
+		return (Error)tmp;
 	}
 	return ERR_UNAVAILABLE;
 }
@@ -412,8 +416,8 @@ void PluginScriptLanguage::unlock() {
 
 PluginScriptLanguage::PluginScriptLanguage(const godot_pluginscript_language_desc *desc) :
 		_desc(*desc) {
-	_resource_loader = memnew(ResourceFormatLoaderPluginScript(this));
-	_resource_saver = memnew(ResourceFormatSaverPluginScript(this));
+	_resource_loader = Ref<ResourceFormatLoaderPluginScript>(memnew(ResourceFormatLoaderPluginScript(this)));
+	_resource_saver = Ref<ResourceFormatSaverPluginScript>(memnew(ResourceFormatSaverPluginScript(this)));
 
 // TODO: totally remove _lock attribute if NO_THREADS is set
 #ifdef NO_THREADS
@@ -424,8 +428,6 @@ PluginScriptLanguage::PluginScriptLanguage(const godot_pluginscript_language_des
 }
 
 PluginScriptLanguage::~PluginScriptLanguage() {
-	memdelete(_resource_loader);
-	memdelete(_resource_saver);
 #ifndef NO_THREADS
 	if (_lock) {
 		memdelete(_lock);

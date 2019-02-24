@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,11 +27,12 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #ifndef SET_H
 #define SET_H
 
-#include "os/memory.h"
-#include "typedefs.h"
+#include "core/os/memory.h"
+#include "core/typedefs.h"
 
 /**
 	@author Juan Linietsky <reduzio@gmail.com>
@@ -184,7 +185,7 @@ private:
 		if (node->right != _data._nil) {
 
 			node = node->right;
-			while (node->left != _data._nil) { /* returns the minium of the right subtree of node */
+			while (node->left != _data._nil) { /* returns the minimum of the right subtree of node */
 				node = node->left;
 			}
 			return node;
@@ -206,7 +207,7 @@ private:
 		if (node->left != _data._nil) {
 
 			node = node->left;
-			while (node->right != _data._nil) { /* returns the minium of the left subtree of node */
+			while (node->right != _data._nil) { /* returns the minimum of the left subtree of node */
 				node = node->right;
 			}
 			return node;
@@ -594,6 +595,7 @@ public:
 		return e;
 	}
 
+	inline bool empty() const { return _data.size_cache == 0; }
 	inline int size() const { return _data.size_cache; }
 
 	int calculate_depth() const {

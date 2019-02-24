@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,12 +27,14 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #include "particles_2d_editor_plugin.h"
 
 #include "canvas_item_editor_plugin.h"
-#include "io/image_loader.h"
-#include "scene/3d/particles.h"
+#include "core/io/image_loader.h"
+#include "scene/2d/cpu_particles_2d.h"
 #include "scene/gui/separator.h"
+#include "scene/resources/particles_material.h"
 
 void Particles2DEditorPlugin::edit(Object *p_object) {
 
@@ -57,8 +59,6 @@ void Particles2DEditorPlugin::make_visible(bool p_visible) {
 
 void Particles2DEditorPlugin::_file_selected(const String &p_file) {
 
-	print_line("file: " + p_file);
-
 	source_emission_file = p_file;
 	emission_mask->popup_centered_minsize();
 }
@@ -67,7 +67,12 @@ void Particles2DEditorPlugin::_menu_callback(int p_idx) {
 
 	switch (p_idx) {
 		case MENU_GENERATE_VISIBILITY_RECT: {
-			generate_aabb->popup_centered_minsize();
+			float gen_time = particles->get_lifetime();
+			if (gen_time < 1.0)
+				generate_seconds->set_value(1.0);
+			else
+				generate_seconds->set_value(trunc(gen_time) + 1.0);
+			generate_visibility_rect->popup_centered_minsize();
 		} break;
 		case MENU_LOAD_EMISSION_MASK: {
 
@@ -77,11 +82,19 @@ void Particles2DEditorPlugin::_menu_callback(int p_idx) {
 		case MENU_CLEAR_EMISSION_MASK: {
 
 			emission_mask->popup_centered_minsize();
+		} break;
+		case MENU_OPTION_CONVERT_TO_CPU_PARTICLES: {
 
-			/*undo_redo->create_action(TTR("Clear Emission Mask"));
-			undo_redo->add_do_method(particles, "set_emission_points", PoolVector<Vector2>());
-			undo_redo->add_undo_method(particles, "set_emission_points", particles->get_emission_points());
-			undo_redo->commit_action();*/
+			CPUParticles2D *cpu_particles = memnew(CPUParticles2D);
+			cpu_particles->convert_from_particles(particles);
+			cpu_particles->set_name(particles->get_name());
+			cpu_particles->set_transform(particles->get_transform());
+			cpu_particles->set_visible(particles->is_visible());
+			cpu_particles->set_pause_mode(particles->get_pause_mode());
+			cpu_particles->set_z_index(particles->get_z_index());
+
+			EditorNode::get_singleton()->get_scene_tree_dock()->replace_node(particles, cpu_particles, false);
+
 		} break;
 	}
 }
@@ -92,13 +105,19 @@ void Particles2DEditorPlugin::_generate_visibility_rect() {
 
 	float running = 0.0;
 
-	EditorProgress ep("gen_aabb", TTR("Generating AABB"), int(time));
+	EditorProgress ep("gen_vrect", TTR("Generating Visibility Rect"), int(time));
+
+	bool was_emitting = particles->is_emitting();
+	if (!was_emitting) {
+		particles->set_emitting(true);
+		OS::get_singleton()->delay_usec(1000);
+	}
 
 	Rect2 rect;
 	while (running < time) {
 
 		uint64_t ticks = OS::get_singleton()->get_ticks_usec();
-		ep.step("Generating..", int(running), true);
+		ep.step("Generating...", int(running), true);
 		OS::get_singleton()->delay_usec(1000);
 
 		Rect2 capture = particles->capture_rect();
@@ -108,6 +127,10 @@ void Particles2DEditorPlugin::_generate_visibility_rect() {
 			rect = rect.merge(capture);
 
 		running += (OS::get_singleton()->get_ticks_usec() - ticks) / 1000000.0;
+	}
+
+	if (!was_emitting) {
+		particles->set_emitting(false);
 	}
 
 	particles->set_visibility_rect(rect);
@@ -169,12 +192,12 @@ void Particles2DEditorPlugin::_generate_emission_mask() {
 					if (emode == EMISSION_MODE_SOLID) {
 
 						if (capture_colors) {
-							valid_colors[vpc * 4 + 0] = r[(j * s.width + i) * 4 + 0];
-							valid_colors[vpc * 4 + 1] = r[(j * s.width + i) * 4 + 1];
-							valid_colors[vpc * 4 + 2] = r[(j * s.width + i) * 4 + 2];
-							valid_colors[vpc * 4 + 3] = r[(j * s.width + i) * 4 + 3];
+							valid_colors.write[vpc * 4 + 0] = r[(j * s.width + i) * 4 + 0];
+							valid_colors.write[vpc * 4 + 1] = r[(j * s.width + i) * 4 + 1];
+							valid_colors.write[vpc * 4 + 2] = r[(j * s.width + i) * 4 + 2];
+							valid_colors.write[vpc * 4 + 3] = r[(j * s.width + i) * 4 + 3];
 						}
-						valid_positions[vpc++] = Point2(i, j);
+						valid_positions.write[vpc++] = Point2(i, j);
 
 					} else {
 
@@ -193,7 +216,7 @@ void Particles2DEditorPlugin::_generate_emission_mask() {
 						}
 
 						if (on_border) {
-							valid_positions[vpc] = Point2(i, j);
+							valid_positions.write[vpc] = Point2(i, j);
 
 							if (emode == EMISSION_MODE_BORDER_DIRECTED) {
 								Vector2 normal;
@@ -210,14 +233,14 @@ void Particles2DEditorPlugin::_generate_emission_mask() {
 								}
 
 								normal.normalize();
-								valid_normals[vpc] = normal;
+								valid_normals.write[vpc] = normal;
 							}
 
 							if (capture_colors) {
-								valid_colors[vpc * 4 + 0] = r[(j * s.width + i) * 4 + 0];
-								valid_colors[vpc * 4 + 1] = r[(j * s.width + i) * 4 + 1];
-								valid_colors[vpc * 4 + 2] = r[(j * s.width + i) * 4 + 2];
-								valid_colors[vpc * 4 + 3] = r[(j * s.width + i) * 4 + 3];
+								valid_colors.write[vpc * 4 + 0] = r[(j * s.width + i) * 4 + 0];
+								valid_colors.write[vpc * 4 + 1] = r[(j * s.width + i) * 4 + 1];
+								valid_colors.write[vpc * 4 + 2] = r[(j * s.width + i) * 4 + 2];
+								valid_colors.write[vpc * 4 + 3] = r[(j * s.width + i) * 4 + 3];
 							}
 
 							vpc++;
@@ -233,7 +256,7 @@ void Particles2DEditorPlugin::_generate_emission_mask() {
 		valid_normals.resize(vpc);
 	}
 
-	ERR_EXPLAIN(TTR("No pixels with transparency > 128 in image.."));
+	ERR_EXPLAIN(TTR("No pixels with transparency > 128 in image..."));
 	ERR_FAIL_COND(valid_positions.size() == 0);
 
 	PoolVector<uint8_t> texdata;
@@ -309,14 +332,6 @@ void Particles2DEditorPlugin::_generate_emission_mask() {
 	} else {
 		pm->set_emission_shape(ParticlesMaterial::EMISSION_SHAPE_POINTS);
 	}
-
-	/*undo_redo->create_action(TTR("Set Emission Mask"));
-	undo_redo->add_do_method(particles, "set_emission_points", epoints);
-	undo_redo->add_do_method(particles, "set_emission_half_extents", extents);
-	undo_redo->add_undo_method(particles, "set_emission_points", particles->get_emission_points());
-	undo_redo->add_undo_method(particles, "set_emission_half_extents", particles->get_emission_half_extents());
-	undo_redo->commit_action();
-	*/
 }
 
 void Particles2DEditorPlugin::_notification(int p_what) {
@@ -354,6 +369,8 @@ Particles2DEditorPlugin::Particles2DEditorPlugin(EditorNode *p_node) {
 	menu->get_popup()->add_separator();
 	menu->get_popup()->add_item(TTR("Load Emission Mask"), MENU_LOAD_EMISSION_MASK);
 	//	menu->get_popup()->add_item(TTR("Clear Emission Mask"), MENU_CLEAR_EMISSION_MASK);
+	menu->get_popup()->add_separator();
+	menu->get_popup()->add_item(TTR("Convert to CPUParticles"), MENU_OPTION_CONVERT_TO_CPU_PARTICLES);
 	menu->set_text(TTR("Particles"));
 	toolbar->add_child(menu);
 
@@ -373,19 +390,19 @@ Particles2DEditorPlugin::Particles2DEditorPlugin(EditorNode *p_node) {
 	epoints->set_value(512);
 	file->get_vbox()->add_margin_child(TTR("Generated Point Count:"), epoints);
 
-	generate_aabb = memnew(ConfirmationDialog);
-	generate_aabb->set_title(TTR("Generate Visibility Rect"));
+	generate_visibility_rect = memnew(ConfirmationDialog);
+	generate_visibility_rect->set_title(TTR("Generate Visibility Rect"));
 	VBoxContainer *genvb = memnew(VBoxContainer);
-	generate_aabb->add_child(genvb);
+	generate_visibility_rect->add_child(genvb);
 	generate_seconds = memnew(SpinBox);
 	genvb->add_margin_child(TTR("Generation Time (sec):"), generate_seconds);
 	generate_seconds->set_min(0.1);
 	generate_seconds->set_max(25);
 	generate_seconds->set_value(2);
 
-	toolbar->add_child(generate_aabb);
+	toolbar->add_child(generate_visibility_rect);
 
-	generate_aabb->connect("confirmed", this, "_generate_visibility_rect");
+	generate_visibility_rect->connect("confirmed", this, "_generate_visibility_rect");
 
 	emission_mask = memnew(ConfirmationDialog);
 	emission_mask->set_title(TTR("Generate Visibility Rect"));

@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,15 +27,16 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #include "visual_script_builtin_funcs.h"
 
-#include "class_db.h"
-#include "func_ref.h"
-#include "io/marshalls.h"
-#include "math_funcs.h"
-#include "os/os.h"
-#include "reference.h"
-#include "variant_parser.h"
+#include "core/class_db.h"
+#include "core/func_ref.h"
+#include "core/io/marshalls.h"
+#include "core/math/math_funcs.h"
+#include "core/os/os.h"
+#include "core/reference.h"
+#include "core/variant_parser.h"
 
 const char *VisualScriptBuiltinFunc::func_name[VisualScriptBuiltinFunc::FUNC_MAX] = {
 	"sin",
@@ -256,9 +257,14 @@ PropertyInfo VisualScriptBuiltinFunc::get_input_value_port_info(int p_idx) const
 		case MATH_ASIN:
 		case MATH_ACOS:
 		case MATH_ATAN:
-		case MATH_ATAN2:
 		case MATH_SQRT: {
-			return PropertyInfo(Variant::REAL, "num");
+			return PropertyInfo(Variant::REAL, "s");
+		} break;
+		case MATH_ATAN2: {
+			if (p_idx == 0)
+				return PropertyInfo(Variant::REAL, "y");
+			else
+				return PropertyInfo(Variant::REAL, "x");
 		} break;
 		case MATH_FMOD:
 		case MATH_FPOSMOD: {
@@ -272,7 +278,7 @@ PropertyInfo VisualScriptBuiltinFunc::get_input_value_port_info(int p_idx) const
 		case MATH_ROUND:
 		case MATH_ABS:
 		case MATH_SIGN: {
-			return PropertyInfo(Variant::REAL, "num");
+			return PropertyInfo(Variant::REAL, "s");
 
 		} break;
 
@@ -286,7 +292,7 @@ PropertyInfo VisualScriptBuiltinFunc::get_input_value_port_info(int p_idx) const
 		case MATH_EXP:
 		case MATH_ISNAN:
 		case MATH_ISINF: {
-			return PropertyInfo(Variant::REAL, "num");
+			return PropertyInfo(Variant::REAL, "s");
 		} break;
 		case MATH_EASE: {
 			if (p_idx == 0)
@@ -317,7 +323,7 @@ PropertyInfo VisualScriptBuiltinFunc::get_input_value_port_info(int p_idx) const
 			else if (p_idx == 1)
 				return PropertyInfo(Variant::REAL, "to");
 			else
-				return PropertyInfo(Variant::REAL, "value");
+				return PropertyInfo(Variant::REAL, "weight");
 		} break;
 		case MATH_RANGE_LERP: {
 			if (p_idx == 0)
@@ -414,14 +420,14 @@ PropertyInfo VisualScriptBuiltinFunc::get_input_value_port_info(int p_idx) const
 		} break;
 		case LOGIC_CLAMP: {
 			if (p_idx == 0)
-				return PropertyInfo(Variant::REAL, "a");
-			else if (p_idx == 0) // FIXME: is it ok to test p_idx == 0 twice?
+				return PropertyInfo(Variant::REAL, "value");
+			else if (p_idx == 1)
 				return PropertyInfo(Variant::REAL, "min");
 			else
 				return PropertyInfo(Variant::REAL, "max");
 		} break;
 		case LOGIC_NEAREST_PO2: {
-			return PropertyInfo(Variant::INT, "num");
+			return PropertyInfo(Variant::INT, "value");
 		} break;
 		case OBJ_WEAKREF: {
 
@@ -665,12 +671,14 @@ PropertyInfo VisualScriptBuiltinFunc::get_output_value_port_info(int p_idx) cons
 	return PropertyInfo(t, "");
 }
 
+/*
 String VisualScriptBuiltinFunc::get_caption() const {
 
 	return "BuiltinFunc";
 }
+*/
 
-String VisualScriptBuiltinFunc::get_text() const {
+String VisualScriptBuiltinFunc::get_caption() const {
 
 	return func_name[func];
 }
@@ -1141,15 +1149,12 @@ void VisualScriptBuiltinFunc::exec_func(BuiltinFunc p_func, const Variant **p_in
 		case VisualScriptBuiltinFunc::TEXT_PRINTERR: {
 
 			String str = *p_inputs[0];
-
-			//str+="\n";
 			print_error(str);
 
 		} break;
 		case VisualScriptBuiltinFunc::TEXT_PRINTRAW: {
-			String str = *p_inputs[0];
 
-			//str+="\n";
+			String str = *p_inputs[0];
 			OS::get_singleton()->print("%s", str.utf8().get_data());
 
 		} break;

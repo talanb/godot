@@ -5,7 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -26,20 +27,21 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #include "visual_server_wrap_mt.h"
-#include "os/os.h"
-#include "project_settings.h"
+#include "core/os/os.h"
+#include "core/project_settings.h"
 
 void VisualServerWrapMT::thread_exit() {
 
 	exit = true;
 }
 
-void VisualServerWrapMT::thread_draw() {
+void VisualServerWrapMT::thread_draw(bool p_swap_buffers, double frame_step) {
 
 	if (!atomic_decrement(&draw_pending)) {
 
-		visual_server->draw();
+		visual_server->draw(p_swap_buffers, frame_step);
 	}
 }
 
@@ -89,15 +91,15 @@ void VisualServerWrapMT::sync() {
 	}
 }
 
-void VisualServerWrapMT::draw(bool p_swap_buffers) {
+void VisualServerWrapMT::draw(bool p_swap_buffers, double frame_step) {
 
 	if (create_thread) {
 
 		atomic_increment(&draw_pending);
-		command_queue.push(this, &VisualServerWrapMT::thread_draw);
+		command_queue.push(this, &VisualServerWrapMT::thread_draw, p_swap_buffers, frame_step);
 	} else {
 
-		visual_server->draw(p_swap_buffers);
+		visual_server->draw(p_swap_buffers, frame_step);
 	}
 }
 
@@ -105,16 +107,16 @@ void VisualServerWrapMT::init() {
 
 	if (create_thread) {
 
-		print_line("CREATING RENDER THREAD");
+		print_verbose("VisualServerWrapMT: Creating render thread");
 		OS::get_singleton()->release_rendering_thread();
 		if (create_thread) {
 			thread = Thread::create(_thread_callback, this);
-			print_line("STARTING RENDER THREAD");
+			print_verbose("VisualServerWrapMT: Starting render thread");
 		}
 		while (!draw_thread_up) {
 			OS::get_singleton()->delay_usec(1000);
 		}
-		print_line("DONE RENDER THREAD");
+		print_verbose("VisualServerWrapMT: Finished render thread");
 	} else {
 
 		visual_server->init();
@@ -158,8 +160,18 @@ void VisualServerWrapMT::finish() {
 	canvas_occluder_polygon_free_cached_ids();
 }
 
+void VisualServerWrapMT::set_use_vsync_callback(bool p_enable) {
+
+	singleton_mt->call_set_use_vsync(p_enable);
+}
+
+VisualServerWrapMT *VisualServerWrapMT::singleton_mt = NULL;
+
 VisualServerWrapMT::VisualServerWrapMT(VisualServer *p_contained, bool p_create_thread) :
 		command_queue(p_create_thread) {
+
+	singleton_mt = this;
+	OS::switch_vsync_function = set_use_vsync_callback; //as this goes to another thread, make sure it goes properly
 
 	visual_server = p_contained;
 	create_thread = p_create_thread;

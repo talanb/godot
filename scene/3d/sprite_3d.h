@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,6 +27,7 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #ifndef SPRITE_3D_H
 #define SPRITE_3D_H
 
@@ -36,6 +37,8 @@
 class SpriteBase3D : public GeometryInstance {
 
 	GDCLASS(SpriteBase3D, GeometryInstance);
+
+	mutable Ref<TriangleMesh> triangle_mesh; //cached
 
 public:
 	enum DrawFlags {
@@ -132,6 +135,7 @@ public:
 
 	virtual AABB get_aabb() const;
 	virtual PoolVector<Face3> get_faces(uint32_t p_usage_flags) const;
+	Ref<TriangleMesh> generate_triangle_mesh() const;
 
 	SpriteBase3D();
 	~SpriteBase3D();
@@ -191,7 +195,6 @@ class AnimatedSprite3D : public SpriteBase3D {
 	int frame;
 
 	bool centered;
-	Point2 offset;
 
 	float timeout;
 

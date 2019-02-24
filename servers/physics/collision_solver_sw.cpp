@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,10 +27,10 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #include "collision_solver_sw.h"
 #include "collision_solver_sat.h"
 
-#include "collision_solver_sat.h"
 #include "gjk_epa.h"
 
 #define collision_solver sat_calculate_penetration
@@ -89,6 +89,10 @@ bool CollisionSolverSW::solve_ray(const ShapeSW *p_shape_A, const Transform &p_t
 		return false;
 
 	Vector3 support_B = p_transform_B.xform(p);
+	if (ray->get_slips_on_slope()) {
+		Vector3 global_n = ai.basis.xform_inv(n).normalized();
+		support_B = support_A + (support_B - support_A).length() * global_n;
+	}
 
 	if (p_result_callback) {
 		if (p_swap_result)
@@ -171,7 +175,6 @@ bool CollisionSolverSW::solve_concave(const ShapeSW *p_shape_A, const Transform 
 	}
 
 	concave_B->cull(local_aabb, concave_callback, &cinfo);
-	//print_line("COL AABB TESTS: "+itos(cinfo.aabb_tests));
 
 	return cinfo.collided;
 }
@@ -359,12 +362,9 @@ bool CollisionSolverSW::solve_distance(const ShapeSW *p_shape_A, const Transform
 
 		concave_B->cull(local_aabb, concave_distance_callback, &cinfo);
 		if (!cinfo.collided) {
-			//print_line(itos(cinfo.tested));
 			r_point_A = cinfo.close_A;
 			r_point_B = cinfo.close_B;
 		}
-
-		//print_line("DIST AABB TESTS: "+itos(cinfo.aabb_tests));
 
 		return !cinfo.collided;
 	} else {

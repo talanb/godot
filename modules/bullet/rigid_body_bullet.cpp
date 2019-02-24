@@ -1,13 +1,12 @@
 /*************************************************************************/
-/*  body_bullet.cpp                                                      */
-/*  Author: AndreaCatania                                                */
+/*  rigid_body_bullet.cpp                                                */
 /*************************************************************************/
 /*                       This file is part of:                           */
 /*                           GODOT ENGINE                                */
-/*                    http://www.godotengine.org                         */
+/*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -30,17 +29,24 @@
 /*************************************************************************/
 
 #include "rigid_body_bullet.h"
-#include "BulletCollision/CollisionDispatch/btGhostObject.h"
-#include "BulletCollision/CollisionShapes/btConvexPointCloudShape.h"
-#include "BulletDynamics/Dynamics/btRigidBody.h"
-#include "btBulletCollisionCommon.h"
+
 #include "btRayShape.h"
 #include "bullet_physics_server.h"
 #include "bullet_types_converter.h"
 #include "bullet_utilities.h"
 #include "godot_motion_state.h"
 #include "joint_bullet.h"
+
+#include <BulletCollision/CollisionDispatch/btGhostObject.h>
+#include <BulletCollision/CollisionShapes/btConvexPointCloudShape.h>
+#include <BulletDynamics/Dynamics/btRigidBody.h>
+#include <btBulletCollisionCommon.h>
+
 #include <assert.h>
+
+/**
+	@author AndreaCatania
+*/
 
 BulletPhysicsDirectBodyState *BulletPhysicsDirectBodyState::singleton = NULL;
 
@@ -108,8 +114,20 @@ Transform BulletPhysicsDirectBodyState::get_transform() const {
 	return body->get_transform();
 }
 
+void BulletPhysicsDirectBodyState::add_central_force(const Vector3 &p_force) {
+	body->apply_central_force(p_force);
+}
+
 void BulletPhysicsDirectBodyState::add_force(const Vector3 &p_force, const Vector3 &p_pos) {
 	body->apply_force(p_force, p_pos);
+}
+
+void BulletPhysicsDirectBodyState::add_torque(const Vector3 &p_torque) {
+	body->apply_torque(p_torque);
+}
+
+void BulletPhysicsDirectBodyState::apply_central_impulse(const Vector3 &p_j) {
+	body->apply_central_impulse(p_j);
 }
 
 void BulletPhysicsDirectBodyState::apply_impulse(const Vector3 &p_pos, const Vector3 &p_j) {
@@ -140,6 +158,10 @@ Vector3 BulletPhysicsDirectBodyState::get_contact_local_normal(int p_contact_idx
 	return body->collisions[p_contact_idx].hitNormal;
 }
 
+float BulletPhysicsDirectBodyState::get_contact_impulse(int p_contact_idx) const {
+	return body->collisions[p_contact_idx].appliedImpulse;
+}
+
 int BulletPhysicsDirectBodyState::get_contact_local_shape(int p_contact_idx) const {
 	return body->collisions[p_contact_idx].local_shape;
 }
@@ -161,7 +183,7 @@ int BulletPhysicsDirectBodyState::get_contact_collider_shape(int p_contact_idx) 
 }
 
 Vector3 BulletPhysicsDirectBodyState::get_contact_collider_velocity_at_position(int p_contact_idx) const {
-	RigidBodyBullet::CollisionData &colDat = body->collisions[p_contact_idx];
+	RigidBodyBullet::CollisionData &colDat = body->collisions.write[p_contact_idx];
 
 	btVector3 hitLocation;
 	G_TO_B(colDat.hitLocalLocation, hitLocation);
@@ -198,45 +220,28 @@ void RigidBodyBullet::KinematicUtilities::copyAllOwnerShapes() {
 
 	const CollisionObjectBullet::ShapeWrapper *shape_wrapper;
 
+	btVector3 owner_scale(owner->get_bt_body_scale());
+
 	for (int i = shapes_count - 1; 0 <= i; --i) {
 		shape_wrapper = &shapes_wrappers[i];
 		if (!shape_wrapper->active) {
 			continue;
 		}
-		shapes[i].transform = shape_wrapper->transform;
 
-		btConvexShape *&kin_shape_ref = shapes[i].shape;
-
+		shapes.write[i].transform = shape_wrapper->transform;
+		shapes.write[i].transform.getOrigin() *= owner_scale;
 		switch (shape_wrapper->shape->get_type()) {
-			case PhysicsServer::SHAPE_SPHERE: {
-				SphereShapeBullet *sphere = static_cast<SphereShapeBullet *>(shape_wrapper->shape);
-				kin_shape_ref = ShapeBullet::create_shape_sphere(sphere->get_radius() * owner->body_scale[0] + safe_margin);
-				break;
-			}
-			case PhysicsServer::SHAPE_BOX: {
-				BoxShapeBullet *box = static_cast<BoxShapeBullet *>(shape_wrapper->shape);
-				kin_shape_ref = ShapeBullet::create_shape_box((box->get_half_extents() * owner->body_scale) + btVector3(safe_margin, safe_margin, safe_margin));
-				break;
-			}
-			case PhysicsServer::SHAPE_CAPSULE: {
-				CapsuleShapeBullet *capsule = static_cast<CapsuleShapeBullet *>(shape_wrapper->shape);
-				kin_shape_ref = ShapeBullet::create_shape_capsule(capsule->get_radius() * owner->body_scale[0] + safe_margin, capsule->get_height() * owner->body_scale[1] + safe_margin);
-				break;
-			}
-			case PhysicsServer::SHAPE_CONVEX_POLYGON: {
-				ConvexPolygonShapeBullet *godot_convex = static_cast<ConvexPolygonShapeBullet *>(shape_wrapper->shape);
-				kin_shape_ref = ShapeBullet::create_shape_convex(godot_convex->vertices);
-				kin_shape_ref->setLocalScaling(owner->body_scale + btVector3(safe_margin, safe_margin, safe_margin));
-				break;
-			}
+			case PhysicsServer::SHAPE_SPHERE:
+			case PhysicsServer::SHAPE_BOX:
+			case PhysicsServer::SHAPE_CAPSULE:
+			case PhysicsServer::SHAPE_CYLINDER:
+			case PhysicsServer::SHAPE_CONVEX_POLYGON:
 			case PhysicsServer::SHAPE_RAY: {
-				RayShapeBullet *godot_ray = static_cast<RayShapeBullet *>(shape_wrapper->shape);
-				kin_shape_ref = ShapeBullet::create_shape_ray(godot_ray->length * owner->body_scale[1] + safe_margin);
-				break;
-			}
+				shapes.write[i].shape = static_cast<btConvexShape *>(shape_wrapper->shape->create_bt_shape(owner_scale * shape_wrapper->scale, safe_margin));
+			} break;
 			default:
 				WARN_PRINT("This shape is not supported to be kinematic!");
-				kin_shape_ref = NULL;
+				shapes.write[i].shape = NULL;
 		}
 	}
 }
@@ -244,7 +249,7 @@ void RigidBodyBullet::KinematicUtilities::copyAllOwnerShapes() {
 void RigidBodyBullet::KinematicUtilities::just_delete_shapes(int new_size) {
 	for (int i = shapes.size() - 1; 0 <= i; --i) {
 		if (shapes[i].shape) {
-			bulletdelete(shapes[i].shape);
+			bulletdelete(shapes.write[i].shape);
 		}
 	}
 	shapes.resize(new_size);
@@ -253,36 +258,45 @@ void RigidBodyBullet::KinematicUtilities::just_delete_shapes(int new_size) {
 RigidBodyBullet::RigidBodyBullet() :
 		RigidCollisionObjectBullet(CollisionObjectBullet::TYPE_RIGID_BODY),
 		kinematic_utilities(NULL),
-		gravity_scale(1),
+		locked_axis(0),
 		mass(1),
+		gravity_scale(1),
 		linearDamp(0),
 		angularDamp(0),
 		can_sleep(true),
-		force_integration_callback(NULL),
-		isTransformChanged(false),
+		omit_forces_integration(false),
+		can_integrate_forces(false),
 		maxCollisionsDetection(0),
 		collisionsCount(0),
+		prev_collision_count(0),
 		maxAreasWhereIam(10),
 		areaWhereIamCount(0),
 		countGravityPointSpaces(0),
-		isScratchedSpaceOverrideModificator(false) {
+		isScratchedSpaceOverrideModificator(false),
+		previousActiveState(true),
+		force_integration_callback(NULL) {
 
 	godotMotionState = bulletnew(GodotMotionState(this));
 
 	// Initial properties
 	const btVector3 localInertia(0, 0, 0);
-	btRigidBody::btRigidBodyConstructionInfo cInfo(mass, godotMotionState, compoundShape, localInertia);
+	btRigidBody::btRigidBodyConstructionInfo cInfo(mass, godotMotionState, NULL, localInertia);
 
 	btBody = bulletnew(btRigidBody(cInfo));
+	reload_shapes();
 	setupBulletCollisionObject(btBody);
 
 	set_mode(PhysicsServer::BODY_MODE_RIGID);
-	set_axis_lock(0, locked_axis[0]);
+	reload_axis_lock();
 
 	areasWhereIam.resize(maxAreasWhereIam);
 	for (int i = areasWhereIam.size() - 1; 0 <= i; --i) {
-		areasWhereIam[i] = NULL;
+		areasWhereIam.write[i] = NULL;
 	}
+	btBody->setSleepingThresholds(0.2, 0.2);
+
+	prev_collision_traces = &collision_traces_1;
+	curr_collision_traces = &collision_traces_2;
 }
 
 RigidBodyBullet::~RigidBodyBullet() {
@@ -305,17 +319,24 @@ void RigidBodyBullet::destroy_kinematic_utilities() {
 	}
 }
 
+void RigidBodyBullet::main_shape_changed() {
+	CRASH_COND(!get_main_shape())
+	btBody->setCollisionShape(get_main_shape());
+	set_continuous_collision_detection(is_continuous_collision_detection_enabled()); // Reset
+}
+
 void RigidBodyBullet::reload_body() {
 	if (space) {
 		space->remove_rigid_body(this);
-		space->add_rigid_body(this);
+		if (get_main_shape())
+			space->add_rigid_body(this);
 	}
 }
 
 void RigidBodyBullet::set_space(SpaceBullet *p_space) {
 	// Clear the old space if there is one
 	if (space) {
-		isTransformChanged = false;
+		can_integrate_forces = false;
 
 		// Remove all eventual constraints
 		assert_no_constraints();
@@ -332,8 +353,11 @@ void RigidBodyBullet::set_space(SpaceBullet *p_space) {
 }
 
 void RigidBodyBullet::dispatch_callbacks() {
-	/// The check isTransformChanged is necessary in order to call integrated forces only when the first transform is sent
-	if (btBody->isActive() && force_integration_callback && isTransformChanged) {
+	/// The check isFirstTransformChanged is necessary in order to call integrated forces only when the first transform is sent
+	if ((btBody->isKinematicObject() || btBody->isActive() || previousActiveState != btBody->isActive()) && force_integration_callback && can_integrate_forces) {
+
+		if (omit_forces_integration)
+			btBody->clearForces();
 
 		BulletPhysicsDirectBodyState *bodyDirect = BulletPhysicsDirectBodyState::get_singleton(this);
 
@@ -360,6 +384,8 @@ void RigidBodyBullet::dispatch_callbacks() {
 	/// Lock axis
 	btBody->setLinearVelocity(btBody->getLinearVelocity() * btBody->getLinearFactor());
 	btBody->setAngularVelocity(btBody->getAngularVelocity() * btBody->getAngularFactor());
+
+	previousActiveState = btBody->isActive();
 }
 
 void RigidBodyBullet::set_force_integration_callback(ObjectID p_id, const StringName &p_method, const Variant &p_udata) {
@@ -377,10 +403,6 @@ void RigidBodyBullet::set_force_integration_callback(ObjectID p_id, const String
 	}
 }
 
-void RigidBodyBullet::scratch() {
-	isTransformChanged = true;
-}
-
 void RigidBodyBullet::scratch_space_override_modificator() {
 	isScratchedSpaceOverrideModificator = true;
 }
@@ -392,25 +414,48 @@ void RigidBodyBullet::on_collision_filters_change() {
 }
 
 void RigidBodyBullet::on_collision_checker_start() {
+
+	prev_collision_count = collisionsCount;
 	collisionsCount = 0;
+
+	// Swap array
+	Vector<RigidBodyBullet *> *s = prev_collision_traces;
+	prev_collision_traces = curr_collision_traces;
+	curr_collision_traces = s;
 }
 
-bool RigidBodyBullet::add_collision_object(RigidBodyBullet *p_otherObject, const Vector3 &p_hitWorldLocation, const Vector3 &p_hitLocalLocation, const Vector3 &p_hitNormal, int p_other_shape_index, int p_local_shape_index) {
+void RigidBodyBullet::on_collision_checker_end() {
+	// Always true if active and not a static or kinematic body
+	isTransformChanged = btBody->isActive() && !btBody->isStaticOrKinematicObject();
+}
+
+bool RigidBodyBullet::add_collision_object(RigidBodyBullet *p_otherObject, const Vector3 &p_hitWorldLocation, const Vector3 &p_hitLocalLocation, const Vector3 &p_hitNormal, const float &p_appliedImpulse, int p_other_shape_index, int p_local_shape_index) {
 
 	if (collisionsCount >= maxCollisionsDetection) {
 		return false;
 	}
 
-	CollisionData &cd = collisions[collisionsCount];
+	CollisionData &cd = collisions.write[collisionsCount];
 	cd.hitLocalLocation = p_hitLocalLocation;
 	cd.otherObject = p_otherObject;
 	cd.hitWorldLocation = p_hitWorldLocation;
 	cd.hitNormal = p_hitNormal;
+	cd.appliedImpulse = p_appliedImpulse;
 	cd.other_object_shape = p_other_shape_index;
 	cd.local_shape = p_local_shape_index;
 
+	curr_collision_traces->write[collisionsCount] = p_otherObject;
+
 	++collisionsCount;
 	return true;
+}
+
+bool RigidBodyBullet::was_colliding(RigidBodyBullet *p_other_object) {
+	for (int i = prev_collision_count - 1; 0 <= i; --i) {
+		if ((*prev_collision_traces)[i] == p_other_object)
+			return true;
+	}
+	return false;
 }
 
 void RigidBodyBullet::assert_no_constraints() {
@@ -434,6 +479,10 @@ void RigidBodyBullet::set_activation_state(bool p_active) {
 
 bool RigidBodyBullet::is_active() const {
 	return btBody->isActive();
+}
+
+void RigidBodyBullet::set_omit_forces_integration(bool p_omit) {
+	omit_forces_integration = p_omit;
 }
 
 void RigidBodyBullet::set_param(PhysicsServer::BodyParameter p_param, real_t p_value) {
@@ -492,35 +541,33 @@ real_t RigidBodyBullet::get_param(PhysicsServer::BodyParameter p_param) const {
 
 void RigidBodyBullet::set_mode(PhysicsServer::BodyMode p_mode) {
 	// This is necessary to block force_integration untile next move
-	isTransformChanged = false;
+	can_integrate_forces = false;
 	destroy_kinematic_utilities();
 	// The mode change is relevant to its mass
 	switch (p_mode) {
 		case PhysicsServer::BODY_MODE_KINEMATIC:
 			mode = PhysicsServer::BODY_MODE_KINEMATIC;
-			set_axis_lock(0, locked_axis[0]); // Reload axis lock
+			reload_axis_lock();
 			_internal_set_mass(0);
 			init_kinematic_utilities();
 			break;
 		case PhysicsServer::BODY_MODE_STATIC:
 			mode = PhysicsServer::BODY_MODE_STATIC;
-			set_axis_lock(0, locked_axis[0]); // Reload axis lock
+			reload_axis_lock();
 			_internal_set_mass(0);
 			break;
-		case PhysicsServer::BODY_MODE_RIGID: {
+		case PhysicsServer::BODY_MODE_RIGID:
 			mode = PhysicsServer::BODY_MODE_RIGID;
-			set_axis_lock(0, locked_axis[0]); // Reload axis lock
+			reload_axis_lock();
 			_internal_set_mass(0 == mass ? 1 : mass);
 			scratch_space_override_modificator();
 			break;
-		}
-		case PhysicsServer::BODY_MODE_CHARACTER: {
+		case PhysicsServer::BODY_MODE_CHARACTER:
 			mode = PhysicsServer::BODY_MODE_CHARACTER;
-			set_axis_lock(0, locked_axis[0]); // Reload axis lock
+			reload_axis_lock();
 			_internal_set_mass(0 == mass ? 1 : mass);
 			scratch_space_override_modificator();
 			break;
-		}
 	}
 
 	btBody->setAngularVelocity(btVector3(0, 0, 0));
@@ -576,7 +623,8 @@ Variant RigidBodyBullet::get_state(PhysicsServer::BodyState p_state) const {
 void RigidBodyBullet::apply_central_impulse(const Vector3 &p_impulse) {
 	btVector3 btImpu;
 	G_TO_B(p_impulse, btImpu);
-	btBody->activate();
+	if (Vector3() != p_impulse)
+		btBody->activate();
 	btBody->applyCentralImpulse(btImpu);
 }
 
@@ -585,14 +633,16 @@ void RigidBodyBullet::apply_impulse(const Vector3 &p_pos, const Vector3 &p_impul
 	btVector3 btPos;
 	G_TO_B(p_impulse, btImpu);
 	G_TO_B(p_pos, btPos);
-	btBody->activate();
+	if (Vector3() != p_impulse)
+		btBody->activate();
 	btBody->applyImpulse(btImpu, btPos);
 }
 
 void RigidBodyBullet::apply_torque_impulse(const Vector3 &p_impulse) {
 	btVector3 btImp;
 	G_TO_B(p_impulse, btImp);
-	btBody->activate();
+	if (Vector3() != p_impulse)
+		btBody->activate();
 	btBody->applyTorqueImpulse(btImp);
 }
 
@@ -601,28 +651,32 @@ void RigidBodyBullet::apply_force(const Vector3 &p_force, const Vector3 &p_pos) 
 	btVector3 btPos;
 	G_TO_B(p_force, btForce);
 	G_TO_B(p_pos, btPos);
-	btBody->activate();
+	if (Vector3() != p_force)
+		btBody->activate();
 	btBody->applyForce(btForce, btPos);
 }
 
 void RigidBodyBullet::apply_central_force(const Vector3 &p_force) {
 	btVector3 btForce;
 	G_TO_B(p_force, btForce);
-	btBody->activate();
+	if (Vector3() != p_force)
+		btBody->activate();
 	btBody->applyCentralForce(btForce);
 }
 
 void RigidBodyBullet::apply_torque(const Vector3 &p_torque) {
 	btVector3 btTorq;
 	G_TO_B(p_torque, btTorq);
-	btBody->activate();
+	if (Vector3() != p_torque)
+		btBody->activate();
 	btBody->applyTorque(btTorq);
 }
 
 void RigidBodyBullet::set_applied_force(const Vector3 &p_force) {
 	btVector3 btVec = btBody->getTotalTorque();
 
-	btBody->activate();
+	if (Vector3() != p_force)
+		btBody->activate();
 
 	btBody->clearForces();
 	btBody->applyTorque(btVec);
@@ -640,7 +694,8 @@ Vector3 RigidBodyBullet::get_applied_force() const {
 void RigidBodyBullet::set_applied_torque(const Vector3 &p_torque) {
 	btVector3 btVec = btBody->getTotalForce();
 
-	btBody->activate();
+	if (Vector3() != p_torque)
+		btBody->activate();
 
 	btBody->clearForces();
 	btBody->applyCentralForce(btVec);
@@ -655,38 +710,48 @@ Vector3 RigidBodyBullet::get_applied_torque() const {
 	return gTotTorq;
 }
 
-void RigidBodyBullet::set_axis_lock(int axis, bool p_lock) {
-	locked_axis[axis] = p_lock;
-
-	btBody->setLinearFactor(btVector3(locked_axis[0] ? 0 : 1., locked_axis[1] ? 0 : 1., locked_axis[2] ? 0 : 1.));
-	if (locked_axis[0] || locked_axis[1] || locked_axis[2])
-		btBody->setAngularFactor(btVector3(locked_axis[0] ? 1. : 0, locked_axis[1] ? 1. : 0, locked_axis[2] ? 1. : 0));
-	else
-		btBody->setAngularFactor(btVector3(1., 1., 1.));
-
-	if (PhysicsServer::BODY_MODE_CHARACTER == mode) {
-		/// When character lock angular
-		btBody->setAngularFactor(btVector3(0., 0., 0.));
+void RigidBodyBullet::set_axis_lock(PhysicsServer::BodyAxis p_axis, bool lock) {
+	if (lock) {
+		locked_axis |= p_axis;
+	} else {
+		locked_axis &= ~p_axis;
 	}
+
+	reload_axis_lock();
 }
 
-bool RigidBodyBullet::get_axis_lock() const {
-	return locked_axis;
+bool RigidBodyBullet::is_axis_locked(PhysicsServer::BodyAxis p_axis) const {
+	return locked_axis & p_axis;
+}
+
+void RigidBodyBullet::reload_axis_lock() {
+
+	btBody->setLinearFactor(btVector3(!is_axis_locked(PhysicsServer::BODY_AXIS_LINEAR_X), !is_axis_locked(PhysicsServer::BODY_AXIS_LINEAR_Y), !is_axis_locked(PhysicsServer::BODY_AXIS_LINEAR_Z)));
+	if (PhysicsServer::BODY_MODE_CHARACTER == mode) {
+		/// When character angular is always locked
+		btBody->setAngularFactor(btVector3(0., 0., 0.));
+	} else {
+		btBody->setAngularFactor(btVector3(!is_axis_locked(PhysicsServer::BODY_AXIS_ANGULAR_X), !is_axis_locked(PhysicsServer::BODY_AXIS_ANGULAR_Y), !is_axis_locked(PhysicsServer::BODY_AXIS_ANGULAR_Z)));
+	}
 }
 
 void RigidBodyBullet::set_continuous_collision_detection(bool p_enable) {
 	if (p_enable) {
 		// This threshold enable CCD if the object moves more than
 		// 1 meter in one simulation frame
-		btBody->setCcdMotionThreshold(1);
+		btBody->setCcdMotionThreshold(0.1);
 
 		/// Calculate using the rule writte below the CCD swept sphere radius
 		///     CCD works on an embedded sphere of radius, make sure this radius
 		///     is embedded inside the convex objects, preferably smaller:
-		///     for an object of dimentions 1 meter, try 0.2
-		btVector3 center;
+		///     for an object of dimensions 1 meter, try 0.2
 		btScalar radius;
-		btBody->getCollisionShape()->getBoundingSphere(center, radius);
+		if (btBody->getCollisionShape()) {
+			btVector3 center;
+			btBody->getCollisionShape()->getBoundingSphere(center, radius);
+		} else {
+			radius = 0;
+		}
 		btBody->setCcdSweptSphereRadius(radius * 0.2);
 	} else {
 		btBody->setCcdMotionThreshold(0.);
@@ -695,13 +760,14 @@ void RigidBodyBullet::set_continuous_collision_detection(bool p_enable) {
 }
 
 bool RigidBodyBullet::is_continuous_collision_detection_enabled() const {
-	return 0. != btBody->getCcdMotionThreshold();
+	return 0. < btBody->getCcdMotionThreshold();
 }
 
 void RigidBodyBullet::set_linear_velocity(const Vector3 &p_velocity) {
 	btVector3 btVec;
 	G_TO_B(p_velocity, btVec);
-	btBody->activate();
+	if (Vector3() != p_velocity)
+		btBody->activate();
 	btBody->setLinearVelocity(btVec);
 }
 
@@ -714,7 +780,8 @@ Vector3 RigidBodyBullet::get_linear_velocity() const {
 void RigidBodyBullet::set_angular_velocity(const Vector3 &p_velocity) {
 	btVector3 btVec;
 	G_TO_B(p_velocity, btVec);
-	btBody->activate();
+	if (Vector3() != p_velocity)
+		btBody->activate();
 	btBody->setAngularVelocity(btVec);
 }
 
@@ -726,10 +793,15 @@ Vector3 RigidBodyBullet::get_angular_velocity() const {
 
 void RigidBodyBullet::set_transform__bullet(const btTransform &p_global_transform) {
 	if (mode == PhysicsServer::BODY_MODE_KINEMATIC) {
+		if (space)
+			btBody->setLinearVelocity((p_global_transform.getOrigin() - btBody->getWorldTransform().getOrigin()) / space->get_delta_time());
 		// The kinematic use MotionState class
 		godotMotionState->moveBody(p_global_transform);
+	} else {
+		// Is necesasry to avoid wrong location on the rendering side on the next frame
+		godotMotionState->setWorldTransform(p_global_transform);
 	}
-	btBody->setWorldTransform(p_global_transform);
+	CollisionObjectBullet::set_transform__bullet(p_global_transform);
 }
 
 const btTransform &RigidBodyBullet::get_transform__bullet() const {
@@ -742,15 +814,21 @@ const btTransform &RigidBodyBullet::get_transform__bullet() const {
 	}
 }
 
-void RigidBodyBullet::on_shapes_changed() {
-	RigidCollisionObjectBullet::on_shapes_changed();
+void RigidBodyBullet::reload_shapes() {
+	RigidCollisionObjectBullet::reload_shapes();
 
 	const btScalar invMass = btBody->getInvMass();
 	const btScalar mass = invMass == 0 ? 0 : 1 / invMass;
 
-	btVector3 inertia;
-	btBody->getCollisionShape()->calculateLocalInertia(mass, inertia);
-	btBody->setMassProps(mass, inertia);
+	if (mainShape) {
+		// inertia initialised zero here because some of bullet's collision
+		// shapes incorrectly do not set the vector in calculateLocalIntertia.
+		// Arbitrary zero is preferable to undefined behaviour.
+		btVector3 inertia(0, 0, 0);
+		if (EMPTY_SHAPE_PROXYTYPE != mainShape->getShapeType()) // Necessary to avoid assertion of the empty shape
+			mainShape->calculateLocalInertia(mass, inertia);
+		btBody->setMassProps(mass, inertia);
+	}
 	btBody->updateInertiaTensor();
 
 	reload_kinematic_shapes();
@@ -769,15 +847,15 @@ void RigidBodyBullet::on_enter_area(AreaBullet *p_area) {
 
 		if (NULL == areasWhereIam[i]) {
 			// This area has the highest priority
-			areasWhereIam[i] = p_area;
+			areasWhereIam.write[i] = p_area;
 			break;
 		} else {
 			if (areasWhereIam[i]->get_spOv_priority() > p_area->get_spOv_priority()) {
 				// The position was found, just shift all elements
 				for (int j = i; j < areaWhereIamCount; ++j) {
-					areasWhereIam[j + 1] = areasWhereIam[j];
+					areasWhereIam.write[j + 1] = areasWhereIam[j];
 				}
-				areasWhereIam[i] = p_area;
+				areasWhereIam.write[i] = p_area;
 				break;
 			}
 		}
@@ -799,9 +877,9 @@ void RigidBodyBullet::on_exit_area(AreaBullet *p_area) {
 	bool wasTheAreaFound = false;
 	for (int i = 0; i < areaWhereIamCount; ++i) {
 		if (p_area == areasWhereIam[i]) {
-			// The area was fount, just shift down all elements
+			// The area was found, just shift down all elements
 			for (int j = i; j < areaWhereIamCount; ++j) {
-				areasWhereIam[j] = areasWhereIam[j + 1];
+				areasWhereIam.write[j] = areasWhereIam[j + 1];
 			}
 			wasTheAreaFound = true;
 			break;
@@ -814,7 +892,7 @@ void RigidBodyBullet::on_exit_area(AreaBullet *p_area) {
 		}
 
 		--areaWhereIamCount;
-		areasWhereIam[areaWhereIamCount] = NULL; // Even if this is not required, I clear the last element to be safe
+		areasWhereIam.write[areaWhereIamCount] = NULL; // Even if this is not required, I clear the last element to be safe
 		if (PhysicsServer::AREA_SPACE_OVERRIDE_DISABLED != p_area->get_spOv_mode()) {
 			scratch_space_override_modificator();
 		}
@@ -822,6 +900,10 @@ void RigidBodyBullet::on_exit_area(AreaBullet *p_area) {
 }
 
 void RigidBodyBullet::reload_space_override_modificator() {
+
+	// Make sure that kinematic bodies have their total gravity calculated
+	if (!is_active() && PhysicsServer::BODY_MODE_KINEMATIC != mode)
+		return;
 
 	Vector3 newGravity(space->get_gravity_direction() * space->get_gravity_magnitude());
 	real_t newLinearDamp(linearDamp);
@@ -870,10 +952,10 @@ void RigidBodyBullet::reload_space_override_modificator() {
 		}
 
 		switch (currentArea->get_spOv_mode()) {
-			///case PhysicsServer::AREA_SPACE_OVERRIDE_DISABLED:
-			/// This area does not affect gravity/damp. These are generally areas
-			/// that exist only to detect collisions, and objects entering or exiting them.
-			///    break;
+			case PhysicsServer::AREA_SPACE_OVERRIDE_DISABLED:
+				/// This area does not affect gravity/damp. These are generally areas
+				/// that exist only to detect collisions, and objects entering or exiting them.
+				break;
 			case PhysicsServer::AREA_SPACE_OVERRIDE_COMBINE:
 				/// This area adds its gravity/damp values to whatever has been
 				/// calculated so far. This way, many overlapping areas can combine
@@ -932,6 +1014,11 @@ void RigidBodyBullet::reload_kinematic_shapes() {
 	kinematic_utilities->copyAllOwnerShapes();
 }
 
+void RigidBodyBullet::notify_transform_changed() {
+	RigidCollisionObjectBullet::notify_transform_changed();
+	can_integrate_forces = true;
+}
+
 void RigidBodyBullet::_internal_set_mass(real_t p_mass) {
 
 	btVector3 localInertia(0, 0, 0);
@@ -943,10 +1030,12 @@ void RigidBodyBullet::_internal_set_mass(real_t p_mass) {
 	const bool isDynamic = p_mass != 0.f;
 	if (isDynamic) {
 
-		ERR_FAIL_COND(PhysicsServer::BODY_MODE_RIGID != mode && PhysicsServer::BODY_MODE_CHARACTER != mode);
+		if (PhysicsServer::BODY_MODE_RIGID != mode && PhysicsServer::BODY_MODE_CHARACTER != mode)
+			return;
 
 		m_isStatic = false;
-		compoundShape->calculateLocalInertia(p_mass, localInertia);
+		if (mainShape)
+			mainShape->calculateLocalInertia(p_mass, localInertia);
 
 		if (PhysicsServer::BODY_MODE_RIGID == mode) {
 
@@ -963,7 +1052,8 @@ void RigidBodyBullet::_internal_set_mass(real_t p_mass) {
 		}
 	} else {
 
-		ERR_FAIL_COND(PhysicsServer::BODY_MODE_STATIC != mode && PhysicsServer::BODY_MODE_KINEMATIC != mode);
+		if (PhysicsServer::BODY_MODE_STATIC != mode && PhysicsServer::BODY_MODE_KINEMATIC != mode)
+			return;
 
 		m_isStatic = true;
 		if (PhysicsServer::BODY_MODE_STATIC == mode) {

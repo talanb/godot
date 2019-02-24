@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,16 +27,18 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #ifndef OS_H
 #define OS_H
 
-#include "engine.h"
-#include "image.h"
-#include "io/logger.h"
-#include "list.h"
-#include "os/main_loop.h"
-#include "ustring.h"
-#include "vector.h"
+#include "core/engine.h"
+#include "core/image.h"
+#include "core/io/logger.h"
+#include "core/list.h"
+#include "core/os/main_loop.h"
+#include "core/ustring.h"
+#include "core/vector.h"
+
 #include <stdarg.h>
 
 /**
@@ -58,12 +60,17 @@ class OS {
 	int _exit_code;
 	int _orientation;
 	bool _allow_hidpi;
+	bool _allow_layered;
+	bool _use_vsync;
 
 	char *last_error;
 
 	void *_stack_bottom;
 
 	CompositeLogger *_logger;
+
+	bool restart_on_exit;
+	List<String> restart_commandline;
 
 protected:
 	void _set_logger(CompositeLogger *p_logger);
@@ -92,16 +99,22 @@ public:
 		bool resizable;
 		bool borderless_window;
 		bool maximized;
+		bool always_on_top;
 		bool use_vsync;
+		bool layered_splash;
+		bool layered;
 		float get_aspect() const { return (float)width / (float)height; }
-		VideoMode(int p_width = 1024, int p_height = 600, bool p_fullscreen = false, bool p_resizable = true, bool p_borderless_window = false, bool p_maximized = false, bool p_use_vsync = false) {
+		VideoMode(int p_width = 1024, int p_height = 600, bool p_fullscreen = false, bool p_resizable = true, bool p_borderless_window = false, bool p_maximized = false, bool p_always_on_top = false, bool p_use_vsync = false) {
 			width = p_width;
 			height = p_height;
 			fullscreen = p_fullscreen;
 			resizable = p_resizable;
 			borderless_window = p_borderless_window;
 			maximized = p_maximized;
+			always_on_top = p_always_on_top;
 			use_vsync = p_use_vsync;
+			layered = false;
+			layered_splash = false;
 		}
 	};
 
@@ -110,17 +123,11 @@ protected:
 
 	RenderThreadMode _render_thread_mode;
 
-	// functions used by main to initialize/deintialize the OS
-	virtual int get_video_driver_count() const = 0;
-	virtual const char *get_video_driver_name(int p_driver) const = 0;
-
-	virtual int get_audio_driver_count() const = 0;
-	virtual const char *get_audio_driver_name(int p_driver) const = 0;
-
+	// functions used by main to initialize/deinitialize the OS
 	void add_logger(Logger *p_logger);
 
 	virtual void initialize_core() = 0;
-	virtual void initialize(const VideoMode &p_desired, int p_video_driver, int p_audio_driver) = 0;
+	virtual Error initialize(const VideoMode &p_desired, int p_video_driver, int p_audio_driver) = 0;
 
 	virtual void set_main_loop(MainLoop *p_main_loop) = 0;
 	virtual void delete_main_loop() = 0;
@@ -171,6 +178,23 @@ public:
 	virtual VideoMode get_video_mode(int p_screen = 0) const = 0;
 	virtual void get_fullscreen_mode_list(List<VideoMode> *p_list, int p_screen = 0) const = 0;
 
+	enum VideoDriver {
+		VIDEO_DRIVER_GLES3,
+		VIDEO_DRIVER_GLES2,
+		VIDEO_DRIVER_MAX,
+	};
+
+	virtual int get_video_driver_count() const;
+	virtual const char *get_video_driver_name(int p_driver) const;
+	virtual int get_current_video_driver() const = 0;
+
+	virtual int get_audio_driver_count() const;
+	virtual const char *get_audio_driver_name(int p_driver) const;
+
+	virtual PoolStringArray get_connected_midi_inputs();
+	virtual void open_midi_inputs();
+	virtual void close_midi_inputs();
+
 	virtual int get_screen_count() const { return 1; }
 	virtual int get_current_screen() const { return 0; }
 	virtual void set_current_screen(int p_screen) {}
@@ -180,6 +204,7 @@ public:
 	virtual Point2 get_window_position() const { return Vector2(); }
 	virtual void set_window_position(const Point2 &p_position) {}
 	virtual Size2 get_window_size() const = 0;
+	virtual Size2 get_real_window_size() const { return get_window_size(); }
 	virtual void set_window_size(const Size2 p_size) {}
 	virtual void set_window_fullscreen(bool p_enabled) {}
 	virtual bool is_window_fullscreen() const { return true; }
@@ -189,13 +214,37 @@ public:
 	virtual bool is_window_minimized() const { return false; }
 	virtual void set_window_maximized(bool p_enabled) {}
 	virtual bool is_window_maximized() const { return true; }
+	virtual void set_window_always_on_top(bool p_enabled) {}
+	virtual bool is_window_always_on_top() const { return false; }
 	virtual void request_attention() {}
+	virtual void center_window();
 
-	virtual void set_borderless_window(int p_borderless) {}
+	// Returns window area free of hardware controls and other obstacles.
+	// The application should use this to determine where to place UI elements.
+	//
+	// Keep in mind the area returned is in window coordinates rather than
+	// viewport coordinates - you should perform the conversion on your own.
+	//
+	// The maximum size of the area is Rect2(0, 0, window_size.width, window_size.height).
+	virtual Rect2 get_window_safe_area() const {
+		Size2 window_size = get_window_size();
+		return Rect2(0, 0, window_size.width, window_size.height);
+	}
+
+	virtual void set_borderless_window(bool p_borderless) {}
 	virtual bool get_borderless_window() { return 0; }
 
+	virtual bool get_window_per_pixel_transparency_enabled() const { return false; }
+	virtual void set_window_per_pixel_transparency_enabled(bool p_enabled) {}
+
+	virtual uint8_t *get_layered_buffer_data() { return NULL; }
+	virtual Size2 get_layered_buffer_size() { return Size2(0, 0); }
+	virtual void swap_layered_buffer() {}
+
+	virtual void set_ime_active(const bool p_active) {}
 	virtual void set_ime_position(const Point2 &p_pos) {}
-	virtual void set_ime_intermediate_text_callback(ImeCallback p_callback, void *p_inp) {}
+	virtual Point2 get_ime_selection() const { return Point2(); }
+	virtual String get_ime_text() const { return String(); }
 
 	virtual Error open_dynamic_library(const String p_path, void *&p_library_handle, bool p_also_set_library_path = false) { return ERR_UNAVAILABLE; }
 	virtual Error close_dynamic_library(void *p_library_handle) { return ERR_UNAVAILABLE; }
@@ -218,6 +267,7 @@ public:
 
 	virtual bool has_environment(const String &p_var) const = 0;
 	virtual String get_environment(const String &p_var) const = 0;
+	virtual bool set_environment(const String &p_var, const String &p_value) const = 0;
 
 	virtual String get_name() = 0;
 	virtual List<String> get_cmdline_args() const { return _cmdline; }
@@ -280,6 +330,7 @@ public:
 	virtual TimeZoneInfo get_time_zone_info() const = 0;
 	virtual uint64_t get_unix_time() const;
 	virtual uint64_t get_system_time_secs() const;
+	virtual uint64_t get_system_time_msecs() const;
 
 	virtual void delay_usec(uint32_t p_usec) const = 0;
 	virtual uint64_t get_ticks_usec() const = 0;
@@ -294,6 +345,7 @@ public:
 
 	virtual void disable_crash_handler() {}
 	virtual bool is_disable_crash_handler() const { return false; }
+	virtual void initialize_debugging() {}
 
 	enum CursorShape {
 		CURSOR_ARROW,
@@ -324,6 +376,7 @@ public:
 	virtual int get_virtual_keyboard_height() const;
 
 	virtual void set_cursor_shape(CursorShape p_shape) = 0;
+	virtual void set_custom_mouse_cursor(const RES &p_cursor, CursorShape p_shape, const Vector2 &p_hotspot) = 0;
 
 	virtual bool get_swap_ok_cancel() { return false; }
 	virtual void dump_memory_to_file(const char *p_file);
@@ -331,10 +384,10 @@ public:
 	virtual void print_resources_in_use(bool p_short = false);
 	virtual void print_all_resources(String p_to_file = "");
 
-	virtual int get_static_memory_usage() const;
-	virtual int get_static_memory_peak_usage() const;
-	virtual int get_dynamic_memory_usage() const;
-	virtual int get_free_static_memory() const;
+	virtual uint64_t get_static_memory_usage() const;
+	virtual uint64_t get_static_memory_peak_usage() const;
+	virtual uint64_t get_dynamic_memory_usage() const;
+	virtual uint64_t get_free_static_memory() const;
 
 	RenderThreadMode get_render_thread_mode() const { return _render_thread_mode; }
 
@@ -431,27 +484,36 @@ public:
 	enum EngineContext {
 		CONTEXT_EDITOR,
 		CONTEXT_PROJECTMAN,
+		CONTEXT_ENGINE,
 	};
 
 	virtual void set_context(int p_context);
 
-	virtual void set_use_vsync(bool p_enable);
-	virtual bool is_vsync_enabled() const;
+	//amazing hack because OpenGL needs this to be set on a separate thread..
+	//also core can't access servers, so a callback must be used
+	typedef void (*SwitchVSyncCallbackInThread)(bool);
+
+	static SwitchVSyncCallbackInThread switch_vsync_function;
+	void set_use_vsync(bool p_enable);
+	bool is_vsync_enabled() const;
+
+	//real, actual overridable function to switch vsync, which needs to be called from graphics thread if needed
+	virtual void _set_use_vsync(bool p_enable) {}
 
 	virtual OS::PowerState get_power_state();
 	virtual int get_power_seconds_left();
 	virtual int get_power_percent_left();
 
+	virtual void force_process_input(){};
 	bool has_feature(const String &p_feature);
 
-	/**
-	 * Returns the stack bottom of the main thread of the application.
-	 * This may be of use when integrating languages with garbage collectors that
-	 * need to check whether a pointer is on the stack.
-	 */
-	virtual void *get_stack_bottom() const;
-
+	bool is_layered_allowed() const { return _allow_layered; }
 	bool is_hidpi_allowed() const { return _allow_hidpi; }
+
+	void set_restart_on_exit(bool p_restart, const List<String> &p_restart_arguments);
+	bool is_restart_on_exit_set() const;
+	List<String> get_restart_on_exit_arguments() const;
+
 	OS();
 	virtual ~OS();
 };

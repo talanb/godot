@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,11 +27,12 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #include "audio_driver_media_kit.h"
 
 #ifdef MEDIA_KIT_ENABLED
 
-#include "project_settings.h"
+#include "core/project_settings.h"
 
 int32_t *AudioDriverMediaKit::samples_in = NULL;
 
@@ -42,7 +43,7 @@ Error AudioDriverMediaKit::init() {
 	speaker_mode = SPEAKER_MODE_STEREO;
 	channels = 2;
 
-	int latency = GLOBAL_DEF("audio/output_latency", 25);
+	int latency = GLOBAL_DEF_RST("audio/output_latency", 25);
 	buffer_size = next_power_of_2(latency * mix_rate / 1000);
 	samples_in = memnew_arr(int32_t, buffer_size * channels);
 
@@ -99,7 +100,7 @@ int AudioDriverMediaKit::get_mix_rate() const {
 	return mix_rate;
 }
 
-AudioDriverSW::SpeakerMode AudioDriverMediaKit::get_speaker_mode() const {
+AudioDriverMediaKit::SpeakerMode AudioDriverMediaKit::get_speaker_mode() const {
 	return speaker_mode;
 }
 

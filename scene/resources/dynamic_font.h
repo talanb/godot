@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,12 +27,15 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #ifndef DYNAMIC_FONT_H
 #define DYNAMIC_FONT_H
 
 #ifdef FREETYPE_ENABLED
-#include "io/resource_loader.h"
-#include "os/thread_safe.h"
+#include "core/io/resource_loader.h"
+#include "core/os/mutex.h"
+#include "core/os/thread_safe.h"
+#include "core/pair.h"
 #include "scene/resources/font.h"
 
 #include <ft2build.h>
@@ -47,23 +50,39 @@ class DynamicFontData : public Resource {
 
 public:
 	struct CacheID {
-
-		int size;
-		bool mipmaps;
-		bool filter;
-
+		union {
+			struct {
+				uint32_t size : 16;
+				uint32_t outline_size : 8;
+				uint32_t mipmaps : 1;
+				uint32_t filter : 1;
+				uint32_t unused : 6;
+			};
+			uint32_t key;
+		};
 		bool operator<(CacheID right) const;
 		CacheID() {
-			size = 16;
-			mipmaps = false;
-			filter = false;
+			key = 0;
 		}
 	};
+
+	enum Hinting {
+		HINTING_NONE,
+		HINTING_LIGHT,
+		HINTING_NORMAL
+	};
+
+	bool is_antialiased() const;
+	void set_antialiased(bool p_antialiased);
+	Hinting get_hinting() const;
+	void set_hinting(Hinting p_hinting);
 
 private:
 	const uint8_t *font_mem;
 	int font_mem_size;
+	bool antialiased;
 	bool force_autohinter;
+	Hinting hinting;
 
 	String font_path;
 	Map<CacheID, DynamicFontAtSize *> size_cache;
@@ -87,6 +106,8 @@ public:
 	~DynamicFontData();
 };
 
+VARIANT_ENUM_CAST(DynamicFontData::Hinting);
+
 class DynamicFontAtSize : public Reference {
 
 	GDCLASS(DynamicFontAtSize, Reference)
@@ -97,10 +118,12 @@ class DynamicFontAtSize : public Reference {
 	FT_Face face; /* handle to face object */
 	FT_StreamRec stream;
 
-	int ascent;
-	int descent;
-	int linegap;
-	int rect_margin;
+	float ascent;
+	float descent;
+	float linegap;
+	float rect_margin;
+	float oversampling;
+	float scale_color_font;
 
 	uint32_t texture_flags;
 
@@ -121,6 +144,7 @@ class DynamicFontAtSize : public Reference {
 		bool found;
 		int texture_idx;
 		Rect2 rect;
+		Rect2 rect_uv;
 		float v_align;
 		float h_align;
 		float advance;
@@ -129,7 +153,20 @@ class DynamicFontAtSize : public Reference {
 			texture_idx = 0;
 			v_align = 0;
 		}
+
+		static Character not_found();
 	};
+
+	struct TexturePosition {
+		int index;
+		int x;
+		int y;
+	};
+
+	const Pair<const Character *, DynamicFontAtSize *> _find_char_with_font(CharType p_char, const Vector<Ref<DynamicFontAtSize> > &p_fallbacks) const;
+	Character _make_outline_char(CharType p_char);
+	TexturePosition _find_texture_pos_for_glyph(int p_color_size, Image::Format p_image_format, int p_width, int p_height);
+	Character _bitmap_to_character(FT_Bitmap bitmap, int yofs, int xofs, float advance);
 
 	static unsigned long _ft_stream_io(FT_Stream stream, unsigned long offset, unsigned char *buffer, unsigned long count);
 	static void _ft_stream_close(FT_Stream stream);
@@ -145,8 +182,9 @@ class DynamicFontAtSize : public Reference {
 	static HashMap<String, Vector<uint8_t> > _fontdata;
 	Error _load();
 
-protected:
 public:
+	static float font_oversampling;
+
 	float get_height() const;
 
 	float get_ascent() const;
@@ -154,9 +192,10 @@ public:
 
 	Size2 get_char_size(CharType p_char, CharType p_next, const Vector<Ref<DynamicFontAtSize> > &p_fallbacks) const;
 
-	float draw_char(RID p_canvas_item, const Point2 &p_pos, CharType p_char, CharType p_next, const Color &p_modulate, const Vector<Ref<DynamicFontAtSize> > &p_fallbacks) const;
+	float draw_char(RID p_canvas_item, const Point2 &p_pos, CharType p_char, CharType p_next, const Color &p_modulate, const Vector<Ref<DynamicFontAtSize> > &p_fallbacks, bool p_advance_only = false) const;
 
 	void set_texture_flags(uint32_t p_flags);
+	void update_oversampling();
 
 	DynamicFontAtSize();
 	~DynamicFontAtSize();
@@ -179,16 +218,22 @@ public:
 private:
 	Ref<DynamicFontData> data;
 	Ref<DynamicFontAtSize> data_at_size;
+	Ref<DynamicFontAtSize> outline_data_at_size;
 
 	Vector<Ref<DynamicFontData> > fallbacks;
 	Vector<Ref<DynamicFontAtSize> > fallback_data_at_size;
+	Vector<Ref<DynamicFontAtSize> > fallback_outline_data_at_size;
 
 	DynamicFontData::CacheID cache_id;
+	DynamicFontData::CacheID outline_cache_id;
+
 	bool valid;
 	int spacing_top;
 	int spacing_bottom;
 	int spacing_char;
 	int spacing_space;
+
+	Color outline_color;
 
 protected:
 	void _reload_cache();
@@ -205,6 +250,12 @@ public:
 
 	void set_size(int p_size);
 	int get_size() const;
+
+	void set_outline_size(int p_size);
+	int get_outline_size() const;
+
+	void set_outline_color(Color p_color);
+	Color get_outline_color() const;
 
 	bool get_use_mipmaps() const;
 	void set_use_mipmaps(bool p_enable);
@@ -230,7 +281,18 @@ public:
 
 	virtual bool is_distance_field_hint() const;
 
-	virtual float draw_char(RID p_canvas_item, const Point2 &p_pos, CharType p_char, CharType p_next = 0, const Color &p_modulate = Color(1, 1, 1)) const;
+	virtual bool has_outline() const;
+
+	virtual float draw_char(RID p_canvas_item, const Point2 &p_pos, CharType p_char, CharType p_next = 0, const Color &p_modulate = Color(1, 1, 1), bool p_outline = false) const;
+
+	SelfList<DynamicFont> font_list;
+
+	static Mutex *dynamic_font_mutex;
+	static SelfList<DynamicFont>::List *dynamic_fonts;
+
+	static void initialize_dynamic_fonts();
+	static void finish_dynamic_fonts();
+	static void update_oversampling();
 
 	DynamicFont();
 	~DynamicFont();
@@ -241,6 +303,7 @@ VARIANT_ENUM_CAST(DynamicFont::SpacingType);
 /////////////
 
 class ResourceFormatLoaderDynamicFont : public ResourceFormatLoader {
+	GDCLASS(ResourceFormatLoaderDynamicFont, ResourceFormatLoader)
 public:
 	virtual RES load(const String &p_path, const String &p_original_path = "", Error *r_error = NULL);
 	virtual void get_recognized_extensions(List<String> *p_extensions) const;

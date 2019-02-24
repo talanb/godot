@@ -1,13 +1,12 @@
 /*************************************************************************/
 /*  constraint_bullet.cpp                                                */
-/*  Author: AndreaCatania                                                */
 /*************************************************************************/
 /*                       This file is part of:                           */
 /*                           GODOT ENGINE                                */
-/*                    http://www.godotengine.org                         */
+/*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -30,12 +29,18 @@
 /*************************************************************************/
 
 #include "constraint_bullet.h"
+
 #include "collision_object_bullet.h"
 #include "space_bullet.h"
 
+/**
+	@author AndreaCatania
+*/
+
 ConstraintBullet::ConstraintBullet() :
 		space(NULL),
-		constraint(NULL) {}
+		constraint(NULL),
+		disabled_collisions_between_bodies(true) {}
 
 void ConstraintBullet::setup(btTypedConstraint *p_constraint) {
 	constraint = p_constraint;
@@ -48,4 +53,13 @@ void ConstraintBullet::set_space(SpaceBullet *p_space) {
 
 void ConstraintBullet::destroy_internal_constraint() {
 	space->remove_constraint(this);
+}
+
+void ConstraintBullet::disable_collisions_between_bodies(const bool p_disabled) {
+	disabled_collisions_between_bodies = p_disabled;
+
+	if (space) {
+		space->remove_constraint(this);
+		space->add_constraint(this, disabled_collisions_between_bodies);
+	}
 }

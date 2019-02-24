@@ -1,13 +1,12 @@
 /*************************************************************************/
 /*  godot_ray_world_algorithm.cpp                                        */
-/*  Author: AndreaCatania                                                */
 /*************************************************************************/
 /*                       This file is part of:                           */
 /*                           GODOT ENGINE                                */
-/*                    http://www.godotengine.org                         */
+/*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -30,9 +29,15 @@
 /*************************************************************************/
 
 #include "godot_ray_world_algorithm.h"
-#include "BulletDynamics/Dynamics/btDiscreteDynamicsWorld.h"
+
 #include "btRayShape.h"
 #include "collision_object_bullet.h"
+
+#include <BulletDynamics/Dynamics/btDiscreteDynamicsWorld.h>
+
+/**
+	@author AndreaCatania
+*/
 
 GodotRayWorldAlgorithm::CreateFunc::CreateFunc(const btDiscreteDynamicsWorld *world) :
 		m_world(world) {}
@@ -42,9 +47,9 @@ GodotRayWorldAlgorithm::SwappedCreateFunc::SwappedCreateFunc(const btDiscreteDyn
 
 GodotRayWorldAlgorithm::GodotRayWorldAlgorithm(const btDiscreteDynamicsWorld *world, btPersistentManifold *mf, const btCollisionAlgorithmConstructionInfo &ci, const btCollisionObjectWrapper *body0Wrap, const btCollisionObjectWrapper *body1Wrap, bool isSwapped) :
 		btActivatingCollisionAlgorithm(ci, body0Wrap, body1Wrap),
+		m_world(world),
 		m_manifoldPtr(mf),
 		m_ownManifold(false),
-		m_world(world),
 		m_isSwapped(isSwapped) {}
 
 GodotRayWorldAlgorithm::~GodotRayWorldAlgorithm() {
@@ -92,10 +97,17 @@ void GodotRayWorldAlgorithm::processCollision(const btCollisionObjectWrapper *bo
 	m_world->rayTestSingleInternal(ray_transform, to, other_co_wrapper, btResult);
 
 	if (btResult.hasHit()) {
-		btVector3 ray_normal(to.getOrigin() - ray_transform.getOrigin());
-		ray_normal.normalize();
-		ray_normal *= -1;
-		resultOut->addContactPoint(ray_normal, btResult.m_hitPointWorld, ray_shape->getScaledLength() * (btResult.m_closestHitFraction - 1));
+
+		btScalar depth(ray_shape->getScaledLength() * (btResult.m_closestHitFraction - 1));
+
+		if (depth >= -ray_shape->getMargin() * 0.5)
+			depth = 0;
+
+		if (ray_shape->getSlipsOnSlope())
+			resultOut->addContactPoint(btResult.m_hitNormalWorld, btResult.m_hitPointWorld, depth);
+		else {
+			resultOut->addContactPoint((ray_transform.getOrigin() - to.getOrigin()).normalize(), btResult.m_hitPointWorld, depth);
+		}
 	}
 }
 

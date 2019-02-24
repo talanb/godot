@@ -1,13 +1,12 @@
 /*************************************************************************/
-/*  btRayShape.h                                                        */
-/*  Author: AndreaCatania                                                */
+/*  btRayShape.h                                                         */
 /*************************************************************************/
 /*                       This file is part of:                           */
 /*                           GODOT ENGINE                                */
-/*                    http://www.godotengine.org                         */
+/*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -29,18 +28,23 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
 
-/// IMPORTANT The class name and filename was created by following Bullet writing rules for an easy (eventually ) porting to bullet
+/// IMPORTANT The class name and filename was created by following Bullet writing rules for an easy (eventually) porting to bullet
 /// This shape is a custom shape that is not present to Bullet physics engine
 #ifndef BTRAYSHAPE_H
 #define BTRAYSHAPE_H
 
-#include "BulletCollision/CollisionShapes/btConvexInternalShape.h"
+#include <BulletCollision/CollisionShapes/btConvexInternalShape.h>
+
+/**
+	@author AndreaCatania
+*/
 
 /// Ray shape around z axis
 ATTRIBUTE_ALIGNED16(class)
 btRayShape : public btConvexInternalShape {
 
 	btScalar m_length;
+	bool slipsOnSlope;
 	/// The default axis is the z
 	btVector3 m_shapeAxis;
 
@@ -55,6 +59,9 @@ public:
 
 	void setLength(btScalar p_length);
 	btScalar getLength() const { return m_length; }
+
+	void setSlipsOnSlope(bool p_slipOnSlope);
+	bool getSlipsOnSlope() const { return slipsOnSlope; }
 
 	const btTransform &getSupportPoint() const { return m_cacheSupportPoint; }
 	const btScalar &getScaledLength() const { return m_cacheScaledLength; }

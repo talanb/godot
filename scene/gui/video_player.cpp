@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,19 +27,16 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
-#include "video_player.h"
 
-#include "os/os.h"
+#include "video_player.h"
+#include "scene/scene_string_names.h"
+
+#include "core/os/os.h"
 #include "servers/audio_server.h"
 
 int VideoPlayer::sp_get_channel_count() const {
 
 	return playback->get_channels();
-}
-
-void VideoPlayer::sp_set_mix_rate(int p_rate) {
-
-	server_mix_rate = p_rate;
 }
 
 bool VideoPlayer::mix(AudioFrame *p_buffer, int p_frames) {
@@ -93,49 +90,32 @@ void VideoPlayer::_mix_audio() {
 
 	AudioFrame vol = AudioFrame(volume, volume);
 
-	// Copy to server's audio buffer
-	switch (AudioServer::get_singleton()->get_speaker_mode()) {
+	int cc = AudioServer::get_singleton()->get_channel_count();
 
-		case AudioServer::SPEAKER_MODE_STEREO: {
-			AudioFrame *target = AudioServer::get_singleton()->thread_get_channel_mix_buffer(bus_index, 0);
+	if (cc == 1) {
+		AudioFrame *target = AudioServer::get_singleton()->thread_get_channel_mix_buffer(bus_index, 0);
+		ERR_FAIL_COND(!target);
 
-			for (int j = 0; j < buffer_size; j++) {
+		for (int j = 0; j < buffer_size; j++) {
 
-				target[j] += buffer[j] * vol;
+			target[j] += buffer[j] * vol;
+		}
+
+	} else {
+		AudioFrame *targets[4];
+
+		for (int k = 0; k < cc; k++) {
+			targets[k] = AudioServer::get_singleton()->thread_get_channel_mix_buffer(bus_index, k);
+			ERR_FAIL_COND(!targets[k]);
+		}
+
+		for (int j = 0; j < buffer_size; j++) {
+
+			AudioFrame frame = buffer[j] * vol;
+			for (int k = 0; k < cc; k++) {
+				targets[k][j] += frame;
 			}
-
-		} break;
-		case AudioServer::SPEAKER_SURROUND_51: {
-
-			AudioFrame *targets[2] = {
-				AudioServer::get_singleton()->thread_get_channel_mix_buffer(bus_index, 1),
-				AudioServer::get_singleton()->thread_get_channel_mix_buffer(bus_index, 2),
-			};
-
-			for (int j = 0; j < buffer_size; j++) {
-
-				AudioFrame frame = buffer[j] * vol;
-				targets[0][j] = frame;
-				targets[1][j] = frame;
-			}
-		} break;
-		case AudioServer::SPEAKER_SURROUND_71: {
-
-			AudioFrame *targets[3] = {
-				AudioServer::get_singleton()->thread_get_channel_mix_buffer(bus_index, 1),
-				AudioServer::get_singleton()->thread_get_channel_mix_buffer(bus_index, 2),
-				AudioServer::get_singleton()->thread_get_channel_mix_buffer(bus_index, 3)
-			};
-
-			for (int j = 0; j < buffer_size; j++) {
-
-				AudioFrame frame = buffer[j] * vol;
-				targets[0][j] += frame;
-				targets[1][j] += frame;
-				targets[2][j] += frame;
-			}
-
-		} break;
+		}
 	}
 }
 
@@ -163,11 +143,7 @@ void VideoPlayer::_notification(int p_notification) {
 
 			bus_index = AudioServer::get_singleton()->thread_find_bus_index(bus);
 
-			if (stream.is_null())
-				return;
-			if (paused)
-				return;
-			if (!playback->is_playing())
+			if (stream.is_null() || paused || !playback->is_playing())
 				return;
 
 			double audio_time = USEC_TO_SEC(OS::get_singleton()->get_ticks_usec());
@@ -178,7 +154,11 @@ void VideoPlayer::_notification(int p_notification) {
 			if (delta == 0)
 				return;
 
-			playback->update(delta);
+			playback->update(delta); // playback->is_playing() returns false in the last video frame
+
+			if (!playback->is_playing()) {
+				emit_signal(SceneStringNames::get_singleton()->finished);
+			}
 
 		} break;
 
@@ -240,7 +220,7 @@ void VideoPlayer::set_stream(const Ref<VideoStream> &p_stream) {
 
 		AudioServer::get_singleton()->lock();
 		if (channels > 0)
-			resampler.setup(channels, playback->get_mix_rate(), server_mix_rate, buffering_ms, 0);
+			resampler.setup(channels, playback->get_mix_rate(), AudioServer::get_singleton()->get_mix_rate(), buffering_ms, 0);
 		else
 			resampler.clear();
 		AudioServer::get_singleton()->unlock();
@@ -471,13 +451,19 @@ void VideoPlayer::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("get_video_texture"), &VideoPlayer::get_video_texture);
 
+	ADD_SIGNAL(MethodInfo("finished"));
+
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "audio_track", PROPERTY_HINT_RANGE, "0,128,1"), "set_audio_track", "get_audio_track");
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "stream", PROPERTY_HINT_RESOURCE_TYPE, "VideoStream"), "set_stream", "get_stream");
 	//ADD_PROPERTY( PropertyInfo(Variant::BOOL, "stream/loop"), "set_loop", "has_loop") ;
 	ADD_PROPERTY(PropertyInfo(Variant::REAL, "volume_db", PROPERTY_HINT_RANGE, "-80,24,0.01"), "set_volume_db", "get_volume_db");
+	ADD_PROPERTY(PropertyInfo(Variant::REAL, "volume", PROPERTY_HINT_EXP_RANGE, "0,15,0.01", 0), "set_volume", "get_volume");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "autoplay"), "set_autoplay", "has_autoplay");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "paused"), "set_paused", "is_paused");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "expand"), "set_expand", "has_expand");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "buffering_msec", PROPERTY_HINT_RANGE, "10,1000"), "set_buffering_msec", "get_buffering_msec");
+	ADD_PROPERTY(PropertyInfo(Variant::REAL, "stream_position", PROPERTY_HINT_RANGE, "0,1280000,0.1", 0), "set_stream_position", "get_stream_position");
+
 	ADD_PROPERTY(PropertyInfo(Variant::STRING, "bus", PROPERTY_HINT_ENUM, ""), "set_bus", "get_bus");
 }
 
@@ -493,7 +479,6 @@ VideoPlayer::VideoPlayer() {
 	bus_index = 0;
 
 	buffering_ms = 500;
-	server_mix_rate = 44100;
 
 	//	internal_stream.player=this;
 	//	stream_rid=AudioServer::get_singleton()->audio_stream_create(&internal_stream);

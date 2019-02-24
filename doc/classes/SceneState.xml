@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<class name="SceneState" inherits="Reference" category="Core" version="3.0-beta">
+<class name="SceneState" inherits="Reference" category="Core" version="3.1">
 	<brief_description>
 		A script interface to a scene file's data.
 	</brief_description>
 	<description>
-		Maintains a list of resources, nodes, exported and overridden properties, and built-in scripts associated with a scene.
+		Maintains a list of resources, nodes, exported, and overridden properties, and built-in scripts associated with a scene.
 	</description>
 	<tutorials>
 	</tutorials>
@@ -86,6 +86,14 @@
 			</argument>
 			<description>
 				Returns the list of group names associated with the node at [code]idx[/code].
+			</description>
+		</method>
+		<method name="get_node_index" qualifiers="const">
+			<return type="int">
+			</return>
+			<argument index="0" name="idx" type="int">
+			</argument>
+			<description>
 			</description>
 		</method>
 		<method name="get_node_instance" qualifiers="const">

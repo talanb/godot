@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,9 +27,10 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #include "visibility_notifier_2d.h"
 
-#include "engine.h"
+#include "core/engine.h"
 #include "particles_2d.h"
 #include "scene/2d/animated_sprite.h"
 #include "scene/2d/physics_body_2d.h"
@@ -86,6 +87,10 @@ void VisibilityNotifier2D::set_rect(const Rect2 &p_rect) {
 Rect2 VisibilityNotifier2D::_edit_get_rect() const {
 
 	return rect;
+}
+
+bool VisibilityNotifier2D::_edit_use_rect() const {
+	return true;
 }
 
 Rect2 VisibilityNotifier2D::get_rect() const {
@@ -185,7 +190,7 @@ void VisibilityEnabler2D::_find_nodes(Node *p_node) {
 	if (enabler[ENABLER_FREEZE_BODIES]) {
 
 		RigidBody2D *rb2d = Object::cast_to<RigidBody2D>(p_node);
-		if (rb2d && ((rb2d->get_mode() == RigidBody2D::MODE_CHARACTER || (rb2d->get_mode() == RigidBody2D::MODE_RIGID && !rb2d->is_able_to_sleep())))) {
+		if (rb2d && ((rb2d->get_mode() == RigidBody2D::MODE_CHARACTER || rb2d->get_mode() == RigidBody2D::MODE_RIGID))) {
 
 			add = true;
 			meta = rb2d->get_mode();
@@ -218,7 +223,7 @@ void VisibilityEnabler2D::_find_nodes(Node *p_node) {
 
 	if (add) {
 
-		p_node->connect(SceneStringNames::get_singleton()->tree_exited, this, "_node_removed", varray(p_node), CONNECT_ONESHOT);
+		p_node->connect(SceneStringNames::get_singleton()->tree_exiting, this, "_node_removed", varray(p_node), CONNECT_ONESHOT);
 		nodes[p_node] = meta;
 		_change_node_state(p_node, false);
 	}
@@ -261,7 +266,7 @@ void VisibilityEnabler2D::_notification(int p_what) {
 
 			if (!visible)
 				_change_node_state(E->key(), true);
-			E->key()->disconnect(SceneStringNames::get_singleton()->tree_exited, this, "_node_removed");
+			E->key()->disconnect(SceneStringNames::get_singleton()->tree_exiting, this, "_node_removed");
 		}
 
 		nodes.clear();

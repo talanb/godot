@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,14 +27,17 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #include "export_template_manager.h"
 
+#include "core/io/json.h"
+#include "core/io/zip_io.h"
+#include "core/os/dir_access.h"
+#include "core/os/input.h"
+#include "core/os/keyboard.h"
+#include "core/version.h"
 #include "editor_node.h"
 #include "editor_scale.h"
-#include "io/json.h"
-#include "io/zip_io.h"
-#include "os/dir_access.h"
-#include "version.h"
 
 void ExportTemplateManager::_update_template_list() {
 
@@ -67,7 +70,7 @@ void ExportTemplateManager::_update_template_list() {
 
 	memdelete(d);
 
-	String current_version = itos(VERSION_MAJOR) + "." + itos(VERSION_MINOR) + "-" + VERSION_STATUS + VERSION_MODULE_CONFIG;
+	String current_version = VERSION_FULL_CONFIG;
 
 	Label *current = memnew(Label);
 	current->set_h_size_flags(SIZE_EXPAND_FILL);
@@ -120,12 +123,11 @@ void ExportTemplateManager::_update_template_list() {
 
 void ExportTemplateManager::_download_template(const String &p_version) {
 
-	print_line("download " + p_version);
 	while (template_list->get_child_count()) {
 		memdelete(template_list->get_child(0));
 	}
 	template_downloader->popup_centered_minsize();
-	template_list_state->set_text(TTR("Retrieving mirrors, please wait.."));
+	template_list_state->set_text(TTR("Retrieving mirrors, please wait..."));
 	template_download_progress->set_max(100);
 	template_download_progress->set_value(0);
 	request_mirror->request("https://godotengine.org/mirrorlist/" + p_version + ".json");
@@ -176,7 +178,7 @@ void ExportTemplateManager::_uninstall_template_confirm() {
 	_update_template_list();
 }
 
-void ExportTemplateManager::_install_from_file(const String &p_file) {
+bool ExportTemplateManager::_install_from_file(const String &p_file, bool p_use_progress) {
 
 	FileAccess *fa = NULL;
 	zlib_filefunc_def io = zipio_create_io_from_file(&fa);
@@ -185,7 +187,7 @@ void ExportTemplateManager::_install_from_file(const String &p_file) {
 	if (!pkg) {
 
 		EditorNode::get_singleton()->show_warning(TTR("Can't open export templates zip."));
-		return;
+		return false;
 	}
 	int ret = unzGoToFirstFile(pkg);
 
@@ -214,35 +216,28 @@ void ExportTemplateManager::_install_from_file(const String &p_file) {
 			data_str.parse_utf8((const char *)data.ptr(), data.size());
 			data_str = data_str.strip_edges();
 
-			if (data_str.get_slice_count("-") != 2 || data_str.get_slice_count(".") != 2) {
-				EditorNode::get_singleton()->show_warning(TTR("Invalid version.txt format inside templates."));
+			// Version number should be of the form major.minor[.patch].status[.module_config]
+			// so it can in theory have 3 or more slices.
+			if (data_str.get_slice_count(".") < 3) {
+				EditorNode::get_singleton()->show_warning(vformat(TTR("Invalid version.txt format inside templates: %s."), data_str));
 				unzClose(pkg);
-				return;
+				return false;
 			}
 
-			String ver = data_str.get_slice("-", 0);
-
-			int major = ver.get_slice(".", 0).to_int();
-			int minor = ver.get_slice(".", 1).to_int();
-			String rev = data_str.get_slice("-", 1);
-
-			if (!rev.is_valid_identifier()) {
-				EditorNode::get_singleton()->show_warning(TTR("Invalid version.txt format inside templates. Revision is not a valid identifier."));
-				unzClose(pkg);
-				return;
-			}
-
-			version = itos(major) + "." + itos(minor) + "-" + rev;
+			version = data_str;
 		}
 
-		fc++;
+		if (file.get_file().size() != 0) {
+			fc++;
+		}
+
 		ret = unzGoToNextFile(pkg);
 	}
 
 	if (version == String()) {
 		EditorNode::get_singleton()->show_warning(TTR("No version.txt found inside templates."));
 		unzClose(pkg);
-		return;
+		return false;
 	}
 
 	String template_path = EditorSettings::get_singleton()->get_templates_dir().plus_file(version);
@@ -250,16 +245,19 @@ void ExportTemplateManager::_install_from_file(const String &p_file) {
 	DirAccess *d = DirAccess::create(DirAccess::ACCESS_FILESYSTEM);
 	Error err = d->make_dir_recursive(template_path);
 	if (err != OK) {
-		EditorNode::get_singleton()->show_warning(TTR("Error creating path for templates:\n") + template_path);
+		EditorNode::get_singleton()->show_warning(TTR("Error creating path for templates:") + "\n" + template_path);
 		unzClose(pkg);
-		return;
+		return false;
 	}
 
 	memdelete(d);
 
 	ret = unzGoToFirstFile(pkg);
 
-	EditorProgress p("ltask", TTR("Extracting Export Templates"), fc);
+	EditorProgress *p = NULL;
+	if (p_use_progress) {
+		p = memnew(EditorProgress("ltask", TTR("Extracting Export Templates"), fc));
+	}
 
 	fc = 0;
 
@@ -270,7 +268,12 @@ void ExportTemplateManager::_install_from_file(const String &p_file) {
 		char fname[16384];
 		unzGetCurrentFileInfo(pkg, &info, fname, 16384, NULL, 0, NULL, 0);
 
-		String file = fname;
+		String file = String(fname).get_file();
+
+		if (file.size() == 0) {
+			ret = unzGoToNextFile(pkg);
+			continue;
+		}
 
 		Vector<uint8_t> data;
 		data.resize(info.uncompressed_size);
@@ -280,20 +283,18 @@ void ExportTemplateManager::_install_from_file(const String &p_file) {
 		unzReadCurrentFile(pkg, data.ptrw(), data.size());
 		unzCloseCurrentFile(pkg);
 
-		print_line(fname);
-		/*
-		for(int i=0;i<512;i++) {
-			print_line(itos(data[i]));
+		if (p) {
+			p->step(TTR("Importing:") + " " + file, fc);
 		}
-		*/
-
-		file = file.get_file();
-
-		p.step(TTR("Importing:") + " " + file, fc);
 
 		FileAccess *f = FileAccess::open(template_path.plus_file(file), FileAccess::WRITE);
 
-		ERR_CONTINUE(!f);
+		if (!f) {
+			ret = unzGoToNextFile(pkg);
+			fc++;
+			ERR_CONTINUE(!f);
+		}
+
 		f->store_buffer(data.ptr(), data.size());
 
 		memdelete(f);
@@ -302,9 +303,15 @@ void ExportTemplateManager::_install_from_file(const String &p_file) {
 		fc++;
 	}
 
+	if (p) {
+		memdelete(p);
+	}
+
 	unzClose(pkg);
 
 	_update_template_list();
+
+	return true;
 }
 
 void ExportTemplateManager::popup_manager() {
@@ -346,7 +353,6 @@ void ExportTemplateManager::_http_download_mirror_completed(int p_status, int p_
 	bool mirrors_found = false;
 
 	Dictionary d = r;
-	print_line(r);
 	if (d.has("mirrors")) {
 		Array mirrors = d["mirrors"];
 		for (int i = 0; i < mirrors.size(); i++) {
@@ -385,7 +391,7 @@ void ExportTemplateManager::_http_download_templates_completed(int p_status, int
 			template_list_state->set_text(TTR("No response."));
 		} break;
 		case HTTPRequest::RESULT_REQUEST_FAILED: {
-			template_list_state->set_text(TTR("Req. Failed."));
+			template_list_state->set_text(TTR("Request Failed."));
 		} break;
 		case HTTPRequest::RESULT_REDIRECT_LIMIT_REACHED: {
 			template_list_state->set_text(TTR("Redirect Loop."));
@@ -394,18 +400,17 @@ void ExportTemplateManager::_http_download_templates_completed(int p_status, int
 			if (p_code != 200) {
 				template_list_state->set_text(TTR("Failed:") + " " + itos(p_code));
 			} else {
-				String path = EditorSettings::get_singleton()->get_cache_dir().plus_file("tmp_templates.tpz");
-				FileAccess *f = FileAccess::open(path, FileAccess::WRITE);
-				if (!f) {
-					template_list_state->set_text(TTR("Can't write file."));
+				String path = download_templates->get_download_file();
+				template_list_state->set_text(TTR("Download Complete."));
+				template_downloader->hide();
+				int ret = _install_from_file(path, false);
+				if (ret) {
+					Error err = OS::get_singleton()->move_to_trash(path);
+					if (err != OK) {
+						EditorNode::get_singleton()->add_io_error(TTR("Cannot remove:") + "\n" + path + "\n");
+					}
 				} else {
-					int size = p_data.size();
-					PoolVector<uint8_t>::Read r = p_data.read();
-					f->store_buffer(r.ptr(), size);
-					memdelete(f);
-					template_list_state->set_text(TTR("Download Complete."));
-					template_downloader->hide();
-					_install_from_file(path);
+					WARN_PRINTS(vformat(TTR("Templates installation failed. The problematic templates archives can be found at '%s'."), path));
 				}
 			}
 		} break;
@@ -416,6 +421,11 @@ void ExportTemplateManager::_http_download_templates_completed(int p_status, int
 
 void ExportTemplateManager::_begin_template_download(const String &p_url) {
 
+	if (Input::get_singleton()->is_key_pressed(KEY_SHIFT)) {
+		OS::get_singleton()->shell_open(p_url);
+		return;
+	}
+
 	for (int i = 0; i < template_list->get_child_count(); i++) {
 		BaseButton *b = Object::cast_to<BaseButton>(template_list->get_child(0));
 		if (b) {
@@ -424,6 +434,8 @@ void ExportTemplateManager::_begin_template_download(const String &p_url) {
 	}
 
 	download_data.clear();
+	download_templates->set_download_file(EditorSettings::get_singleton()->get_cache_dir().plus_file("tmp_templates.tpz"));
+	download_templates->set_use_threads(true);
 
 	Error err = download_templates->request(p_url);
 	if (err != OK) {
@@ -437,7 +449,11 @@ void ExportTemplateManager::_begin_template_download(const String &p_url) {
 	template_download_progress->set_max(100);
 	template_download_progress->set_value(0);
 	template_download_progress->show();
-	template_list_state->set_text(TTR("Connecting to Mirror.."));
+	template_list_state->set_text(TTR("Connecting to Mirror..."));
+}
+
+void ExportTemplateManager::_window_template_downloader_closed() {
+	download_templates->cancel_request();
 }
 
 void ExportTemplateManager::_notification(int p_what) {
@@ -463,13 +479,13 @@ void ExportTemplateManager::_notification(int p_what) {
 				status = TTR("Can't Resolve");
 				errored = true;
 				break;
-			case HTTPClient::STATUS_CONNECTING: status = TTR("Connecting.."); break;
+			case HTTPClient::STATUS_CONNECTING: status = TTR("Connecting..."); break;
 			case HTTPClient::STATUS_CANT_CONNECT:
-				status = TTR("Can't Conect");
+				status = TTR("Can't Connect");
 				errored = true;
 				break;
 			case HTTPClient::STATUS_CONNECTED: status = TTR("Connected"); break;
-			case HTTPClient::STATUS_REQUESTING: status = TTR("Requesting.."); break;
+			case HTTPClient::STATUS_REQUESTING: status = TTR("Requesting..."); break;
 			case HTTPClient::STATUS_BODY:
 				status = TTR("Downloading");
 				if (download_templates->get_body_size() > 0) {
@@ -499,8 +515,6 @@ void ExportTemplateManager::_notification(int p_what) {
 
 	if (p_what == NOTIFICATION_VISIBILITY_CHANGED) {
 		if (!is_visible_in_tree()) {
-			print_line("closed");
-			download_templates->cancel_request();
 			set_process(false);
 		}
 	}
@@ -515,6 +529,7 @@ void ExportTemplateManager::_bind_methods() {
 	ClassDB::bind_method("_http_download_mirror_completed", &ExportTemplateManager::_http_download_mirror_completed);
 	ClassDB::bind_method("_http_download_templates_completed", &ExportTemplateManager::_http_download_templates_completed);
 	ClassDB::bind_method("_begin_template_download", &ExportTemplateManager::_begin_template_download);
+	ClassDB::bind_method("_window_template_downloader_closed", &ExportTemplateManager::_window_template_downloader_closed);
 }
 
 ExportTemplateManager::ExportTemplateManager() {
@@ -547,7 +562,7 @@ ExportTemplateManager::ExportTemplateManager() {
 	template_open->add_filter("*.tpz ; Godot Export Templates");
 	template_open->set_access(FileDialog::ACCESS_FILESYSTEM);
 	template_open->set_mode(FileDialog::MODE_OPEN_FILE);
-	template_open->connect("file_selected", this, "_install_from_file");
+	template_open->connect("file_selected", this, "_install_from_file", varray(true));
 	add_child(template_open);
 
 	set_title(TTR("Export Template Manager"));
@@ -564,13 +579,15 @@ ExportTemplateManager::ExportTemplateManager() {
 	template_downloader = memnew(AcceptDialog);
 	template_downloader->set_title(TTR("Download Templates"));
 	template_downloader->get_ok()->set_text(TTR("Close"));
+	template_downloader->set_exclusive(true);
 	add_child(template_downloader);
+	template_downloader->connect("popup_hide", this, "_window_template_downloader_closed");
 
 	VBoxContainer *vbc = memnew(VBoxContainer);
 	template_downloader->add_child(vbc);
 	ScrollContainer *sc = memnew(ScrollContainer);
 	sc->set_custom_minimum_size(Size2(400, 200) * EDSCALE);
-	vbc->add_margin_child(TTR("Select mirror from list: "), sc);
+	vbc->add_margin_child(TTR("Select mirror from list: (Shift+Click: Open in Browser)"), sc);
 	template_list = memnew(VBoxContainer);
 	sc->add_child(template_list);
 	sc->set_enable_v_scroll(true);

@@ -1,4 +1,5 @@
 import os
+import platform
 import sys
 
 
@@ -10,12 +11,15 @@ def get_name():
     return "Server"
 
 
+def get_program_suffix():
+    if (sys.platform == "darwin"):
+        return "osx"
+    return "x11"
+
+
 def can_build():
 
-    # Doesn't build against Godot 3.0 for now, disable to avoid confusing users
-    return False
-
-    if (os.name != "posix" or sys.platform == "darwin"):
+    if (os.name != "posix"):
         return False
 
     return True
@@ -25,13 +29,13 @@ def get_opts():
     from SCons.Variables import BoolVariable
     return [
         BoolVariable('use_llvm', 'Use the LLVM compiler', False),
+        BoolVariable('use_static_cpp', 'Link libgcc and libstdc++ statically for better portability', False),
     ]
 
 
 def get_flags():
 
-    return [
-    ]
+    return []
 
 
 def configure(env):
@@ -39,10 +43,10 @@ def configure(env):
     ## Build type
 
     if (env["target"] == "release"):
-        env.Append(CCFLAGS=['-O2', '-ffast-math', '-fomit-frame-pointer'])
+        env.Append(CCFLAGS=['-O2', '-fomit-frame-pointer'])
 
     elif (env["target"] == "release_debug"):
-        env.Append(CCFLAGS=['-O2', '-ffast-math', '-DDEBUG_ENABLED'])
+        env.Append(CCFLAGS=['-O2', '-DDEBUG_ENABLED'])
 
     elif (env["target"] == "debug"):
         env.Append(CCFLAGS=['-g2', '-DDEBUG_ENABLED', '-DDEBUG_MEMORY_ENABLED'])
@@ -56,22 +60,16 @@ def configure(env):
     ## Compiler configuration
 
     if env['use_llvm']:
-        if ('clang++' not in env['CXX']):
+        if ('clang++' not in os.path.basename(env['CXX'])):
             env["CC"] = "clang"
             env["CXX"] = "clang++"
-            env["LD"] = "clang++"
+            env["LINK"] = "clang++"
         env.Append(CPPFLAGS=['-DTYPED_METHOD_BIND'])
         env.extra_suffix = ".llvm" + env.extra_suffix
 
     ## Dependencies
 
     # FIXME: Check for existence of the libs before parsing their flags with pkg-config
-
-    if not env['builtin_openssl']:
-        env.ParseConfig('pkg-config openssl --cflags --libs')
-
-    if not env['builtin_libwebp']:
-        env.ParseConfig('pkg-config libwebp --cflags --libs')
 
     # freetype depends on libpng and zlib, so bundling one of them while keeping others
     # as shared libraries leads to weird issues
@@ -85,6 +83,16 @@ def configure(env):
 
     if not env['builtin_libpng']:
         env.ParseConfig('pkg-config libpng --cflags --libs')
+
+    if not env['builtin_bullet']:
+        # We need at least version 2.88
+        import subprocess
+        bullet_version = subprocess.check_output(['pkg-config', 'bullet', '--modversion']).strip()
+        if bullet_version < "2.88":
+            # Abort as system bullet was requested but too old
+            print("Bullet: System version {0} does not match minimal requirements ({1}). Aborting.".format(bullet_version, "2.88"))
+            sys.exit(255)
+        env.ParseConfig('pkg-config bullet --cflags --libs')
 
     if not env['builtin_enet']:
         env.ParseConfig('pkg-config libenet --cflags --libs')
@@ -117,6 +125,26 @@ def configure(env):
     if not env['builtin_libogg']:
         env.ParseConfig('pkg-config ogg --cflags --libs')
 
+    if not env['builtin_libwebp']:
+        env.ParseConfig('pkg-config libwebp --cflags --libs')
+
+    if not env['builtin_mbedtls']:
+        # mbedTLS does not provide a pkgconfig config yet. See https://github.com/ARMmbed/mbedtls/issues/228
+        env.Append(LIBS=['mbedtls', 'mbedcrypto', 'mbedx509'])
+
+    if not env['builtin_libwebsockets']:
+        env.ParseConfig('pkg-config libwebsockets --cflags --libs')
+
+    if not env['builtin_miniupnpc']:
+        # No pkgconfig file so far, hardcode default paths.
+        env.Append(CPPPATH=["/usr/include/miniupnpc"])
+        env.Append(LIBS=["miniupnpc"])
+
+    # On Linux wchar_t should be 32-bits
+    # 16-bit library shouldn't be required due to compiler optimisations
+    if not env['builtin_pcre2']:
+        env.ParseConfig('pkg-config libpcre2-32 --cflags --libs')
+
     ## Flags
 
     # Linkflags below this line should typically stay the last ones
@@ -125,4 +153,18 @@ def configure(env):
 
     env.Append(CPPPATH=['#platform/server'])
     env.Append(CPPFLAGS=['-DSERVER_ENABLED', '-DUNIX_ENABLED'])
+
+    if (platform.system() == "Darwin"):
+        env.Append(LINKFLAGS=['-framework', 'Cocoa', '-framework', 'Carbon', '-lz', '-framework', 'IOKit'])
+
     env.Append(LIBS=['pthread'])
+
+    if (platform.system() == "Linux"):
+        env.Append(LIBS=['dl'])
+
+    if (platform.system().find("BSD") >= 0):
+        env.Append(LIBS=['execinfo'])
+
+    # Link those statically for portability
+    if env['use_static_cpp']:
+        env.Append(LINKFLAGS=['-static-libgcc', '-static-libstdc++'])

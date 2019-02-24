@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,17 +27,20 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #ifndef SHADERTYPES_H
 #define SHADERTYPES_H
 
+#include "core/ordered_hash_map.h"
 #include "servers/visual_server.h"
 #include "shader_language.h"
+
 class ShaderTypes {
 
 	struct Type {
 
 		Map<StringName, ShaderLanguage::FunctionInfo> functions;
-		Set<String> modes;
+		Vector<StringName> modes;
 	};
 
 	Map<VS::ShaderMode, Type> shader_modes;
@@ -50,7 +53,7 @@ public:
 	static ShaderTypes *get_singleton() { return singleton; }
 
 	const Map<StringName, ShaderLanguage::FunctionInfo> &get_functions(VS::ShaderMode p_mode);
-	const Set<String> &get_modes(VS::ShaderMode p_mode);
+	const Vector<StringName> &get_modes(VS::ShaderMode p_mode);
 	const Set<String> &get_types();
 
 	ShaderTypes();

@@ -1,13 +1,12 @@
 /*************************************************************************/
 /*  area_bullet.h                                                        */
-/*  Author: AndreaCatania                                                */
 /*************************************************************************/
 /*                       This file is part of:                           */
 /*                           GODOT ENGINE                                */
-/*                    http://www.godotengine.org                         */
+/*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -36,6 +35,10 @@
 #include "core/vector.h"
 #include "servers/physics_server.h"
 #include "space_bullet.h"
+
+/**
+	@author AndreaCatania
+*/
 
 class btGhostObject;
 
@@ -139,6 +142,7 @@ public:
 	_FORCE_INLINE_ void set_spOv_priority(int p_priority) { spOv_priority = p_priority; }
 	_FORCE_INLINE_ int get_spOv_priority() { return spOv_priority; }
 
+	virtual void main_shape_changed();
 	virtual void reload_body();
 	virtual void set_space(SpaceBullet *p_space);
 
@@ -147,12 +151,13 @@ public:
 	void set_on_state_change(ObjectID p_id, const StringName &p_method, const Variant &p_udata = Variant());
 	void scratch();
 
-	void remove_all_overlapping_instantly();
+	void clear_overlaps(bool p_notify);
 	// Dispatch the callbacks and removes from overlapping list
-	void remove_overlapping_instantly(CollisionObjectBullet *p_object);
+	void remove_overlap(CollisionObjectBullet *p_object, bool p_notify);
 
 	virtual void on_collision_filters_change();
 	virtual void on_collision_checker_start() {}
+	virtual void on_collision_checker_end() { isTransformChanged = false; }
 
 	void add_overlap(CollisionObjectBullet *p_otherObject);
 	void put_overlap_as_exit(int p_index);

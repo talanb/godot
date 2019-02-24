@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,6 +27,7 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #include "mesh_editor_plugin.h"
 
 void MeshEditor::_gui_input(Ref<InputEvent> p_event) {
@@ -64,14 +65,6 @@ void MeshEditor::_notification(int p_what) {
 			first_enter = false;
 		}
 	}
-
-	if (p_what == NOTIFICATION_DRAW) {
-
-		Ref<Texture> checkerboard = get_icon("Checkerboard", "EditorIcons");
-		Size2 size = get_size();
-
-		//draw_texture_rect(checkerboard, Rect2(Point2(), size), true);
-	}
 }
 
 void MeshEditor::_update_rotation() {
@@ -96,13 +89,11 @@ void MeshEditor::edit(Ref<Mesh> p_mesh) {
 		_update_rotation();
 
 		AABB aabb = mesh->get_aabb();
-		print_line("aabb: " + aabb);
 		Vector3 ofs = aabb.position + aabb.size * 0.5;
 		float m = aabb.get_longest_axis_size();
 		if (m != 0) {
 			m = 1.0 / m;
 			m *= 0.5;
-			//print_line("scale: "+rtos(m));
 			Transform xform;
 			xform.basis.scale(Vector3(m, m, m));
 			xform.origin = -xform.basis.xform(ofs); //-ofs*m;

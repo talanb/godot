@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,12 +27,13 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #ifndef INPUT_H
 #define INPUT_H
 
-#include "object.h"
-#include "os/main_loop.h"
-#include "os/thread_safe.h"
+#include "core/object.h"
+#include "core/os/main_loop.h"
+#include "core/os/thread_safe.h"
 
 class Input : public Object {
 
@@ -51,6 +52,28 @@ public:
 		MOUSE_MODE_CONFINED
 	};
 
+#undef CursorShape
+	enum CursorShape {
+		CURSOR_ARROW,
+		CURSOR_IBEAM,
+		CURSOR_POINTING_HAND,
+		CURSOR_CROSS,
+		CURSOR_WAIT,
+		CURSOR_BUSY,
+		CURSOR_DRAG,
+		CURSOR_CAN_DROP,
+		CURSOR_FORBIDDEN,
+		CURSOR_VSIZE,
+		CURSOR_HSIZE,
+		CURSOR_BDIAGSIZE,
+		CURSOR_FDIAGSIZE,
+		CURSOR_MOVE,
+		CURSOR_VSPLIT,
+		CURSOR_HSPLIT,
+		CURSOR_HELP,
+		CURSOR_MAX
+	};
+
 	void set_mouse_mode(MouseMode p_mode);
 	MouseMode get_mouse_mode() const;
 
@@ -62,6 +85,7 @@ public:
 	virtual bool is_action_pressed(const StringName &p_action) const = 0;
 	virtual bool is_action_just_pressed(const StringName &p_action) const = 0;
 	virtual bool is_action_just_released(const StringName &p_action) const = 0;
+	virtual float get_action_strength(const StringName &p_action) const = 0;
 
 	virtual float get_joy_axis(int p_device, int p_axis) const = 0;
 	virtual String get_joy_name(int p_idx) = 0;
@@ -89,14 +113,17 @@ public:
 	virtual Vector3 get_magnetometer() const = 0;
 	virtual Vector3 get_gyroscope() const = 0;
 
-	virtual void action_press(const StringName &p_action) = 0;
+	virtual void action_press(const StringName &p_action, float p_strength = 1.f) = 0;
 	virtual void action_release(const StringName &p_action) = 0;
 
 	void get_argument_options(const StringName &p_function, int p_idx, List<String> *r_options) const;
 
-	virtual bool is_emulating_touchscreen() const = 0;
+	virtual bool is_emulating_touch_from_mouse() const = 0;
+	virtual bool is_emulating_mouse_from_touch() const = 0;
 
-	virtual void set_custom_mouse_cursor(const RES &p_cursor, const Vector2 &p_hotspot = Vector2()) = 0;
+	virtual CursorShape get_default_cursor_shape() = 0;
+	virtual void set_default_cursor_shape(CursorShape p_shape) = 0;
+	virtual void set_custom_mouse_cursor(const RES &p_cursor, CursorShape p_shape = CURSOR_ARROW, const Vector2 &p_hotspot = Vector2()) = 0;
 	virtual void set_mouse_in_window(bool p_in_window) = 0;
 
 	virtual String get_joy_button_string(int p_button) = 0;
@@ -110,5 +137,6 @@ public:
 };
 
 VARIANT_ENUM_CAST(Input::MouseMode);
+VARIANT_ENUM_CAST(Input::CursorShape);
 
 #endif // INPUT_H

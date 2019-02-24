@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,6 +27,7 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #include "core_string_names.h"
 
 CoreStringNames *CoreStringNames::singleton = NULL;
@@ -46,28 +47,27 @@ CoreStringNames::CoreStringNames() :
 #ifdef TOOLS_ENABLED
 		_sections_unfolded(StaticCString::create("_sections_unfolded")),
 #endif
-		_custom_features(StaticCString::create("_custom_features")) {
-
-	x = StaticCString::create("x");
-	y = StaticCString::create("y");
-	z = StaticCString::create("z");
-	w = StaticCString::create("w");
-	r = StaticCString::create("r");
-	g = StaticCString::create("g");
-	b = StaticCString::create("b");
-	a = StaticCString::create("a");
-	position = StaticCString::create("position");
-	size = StaticCString::create("size");
-	end = StaticCString::create("end");
-	basis = StaticCString::create("basis");
-	origin = StaticCString::create("origin");
-	normal = StaticCString::create("normal");
-	d = StaticCString::create("d");
-	h = StaticCString::create("h");
-	s = StaticCString::create("s");
-	v = StaticCString::create("v");
-	r8 = StaticCString::create("r8");
-	g8 = StaticCString::create("g8");
-	b8 = StaticCString::create("b8");
-	a8 = StaticCString::create("a8");
+		_custom_features(StaticCString::create("_custom_features")),
+		x(StaticCString::create("x")),
+		y(StaticCString::create("y")),
+		z(StaticCString::create("z")),
+		w(StaticCString::create("w")),
+		r(StaticCString::create("r")),
+		g(StaticCString::create("g")),
+		b(StaticCString::create("b")),
+		a(StaticCString::create("a")),
+		position(StaticCString::create("position")),
+		size(StaticCString::create("size")),
+		end(StaticCString::create("end")),
+		basis(StaticCString::create("basis")),
+		origin(StaticCString::create("origin")),
+		normal(StaticCString::create("normal")),
+		d(StaticCString::create("d")),
+		h(StaticCString::create("h")),
+		s(StaticCString::create("s")),
+		v(StaticCString::create("v")),
+		r8(StaticCString::create("r8")),
+		g8(StaticCString::create("g8")),
+		b8(StaticCString::create("b8")),
+		a8(StaticCString::create("a8")) {
 }

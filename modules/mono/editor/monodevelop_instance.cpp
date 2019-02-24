@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,6 +27,7 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #include "monodevelop_instance.h"
 
 #include "../mono_gd/gd_mono.h"
@@ -34,17 +35,19 @@
 
 void MonoDevelopInstance::execute(const Vector<String> &p_files) {
 
+	_GDMONO_SCOPE_DOMAIN_(TOOLS_DOMAIN)
+
 	ERR_FAIL_NULL(execute_method);
 	ERR_FAIL_COND(gc_handle.is_null());
 
-	MonoObject *ex = NULL;
+	MonoException *exc = NULL;
 
 	Variant files = p_files;
 	const Variant *args[1] = { &files };
-	execute_method->invoke(gc_handle->get_target(), args, &ex);
+	execute_method->invoke(gc_handle->get_target(), args, &exc);
 
-	if (ex) {
-		mono_print_unhandled_exception(ex);
+	if (exc) {
+		GDMonoUtils::debug_print_unhandled_exception(exc);
 		ERR_FAIL();
 	}
 }
@@ -56,23 +59,24 @@ void MonoDevelopInstance::execute(const String &p_file) {
 	execute(files);
 }
 
-MonoDevelopInstance::MonoDevelopInstance(const String &p_solution) {
+MonoDevelopInstance::MonoDevelopInstance(const String &p_solution, EditorId p_editor_id) {
 
 	_GDMONO_SCOPE_DOMAIN_(TOOLS_DOMAIN)
 
 	GDMonoClass *klass = GDMono::get_singleton()->get_editor_tools_assembly()->get_class("GodotSharpTools.Editor", "MonoDevelopInstance");
 
-	MonoObject *obj = mono_object_new(TOOLS_DOMAIN, klass->get_raw());
+	MonoObject *obj = mono_object_new(TOOLS_DOMAIN, klass->get_mono_ptr());
 
-	GDMonoMethod *ctor = klass->get_method(".ctor", 1);
-	MonoObject *ex = NULL;
+	GDMonoMethod *ctor = klass->get_method(".ctor", 2);
+	MonoException *exc = NULL;
 
 	Variant solution = p_solution;
-	const Variant *args[1] = { &solution };
-	ctor->invoke(obj, args, &ex);
+	Variant editor_id = p_editor_id;
+	const Variant *args[2] = { &solution, &editor_id };
+	ctor->invoke(obj, args, &exc);
 
-	if (ex) {
-		mono_print_unhandled_exception(ex);
+	if (exc) {
+		GDMonoUtils::debug_print_unhandled_exception(exc);
 		ERR_FAIL();
 	}
 

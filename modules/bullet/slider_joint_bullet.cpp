@@ -1,13 +1,12 @@
 /*************************************************************************/
 /*  slider_joint_bullet.cpp                                              */
-/*  Author: AndreaCatania                                                */
 /*************************************************************************/
 /*                       This file is part of:                           */
 /*                           GODOT ENGINE                                */
-/*                    http://www.godotengine.org                         */
+/*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -30,18 +29,33 @@
 /*************************************************************************/
 
 #include "slider_joint_bullet.h"
-#include "BulletDynamics/ConstraintSolver/btSliderConstraint.h"
+
 #include "bullet_types_converter.h"
 #include "bullet_utilities.h"
 #include "rigid_body_bullet.h"
 
+#include <BulletDynamics/ConstraintSolver/btSliderConstraint.h>
+
+/**
+	@author AndreaCatania
+*/
+
 SliderJointBullet::SliderJointBullet(RigidBodyBullet *rbA, RigidBodyBullet *rbB, const Transform &frameInA, const Transform &frameInB) :
 		JointBullet() {
+
+	Transform scaled_AFrame(frameInA.scaled(rbA->get_body_scale()));
+	scaled_AFrame.basis.rotref_posscale_decomposition(scaled_AFrame.basis);
+
 	btTransform btFrameA;
-	G_TO_B(frameInA, btFrameA);
+	G_TO_B(scaled_AFrame, btFrameA);
+
 	if (rbB) {
+
+		Transform scaled_BFrame(frameInB.scaled(rbB->get_body_scale()));
+		scaled_BFrame.basis.rotref_posscale_decomposition(scaled_BFrame.basis);
+
 		btTransform btFrameB;
-		G_TO_B(frameInB, btFrameB);
+		G_TO_B(scaled_BFrame, btFrameB);
 		sliderConstraint = bulletnew(btSliderConstraint(*rbA->get_bt_rigid_body(), *rbB->get_bt_rigid_body(), btFrameA, btFrameB, true));
 
 	} else {
@@ -352,6 +366,7 @@ void SliderJointBullet::set_param(PhysicsServer::SliderJointParam p_param, real_
 		case PhysicsServer::SLIDER_JOINT_ANGULAR_ORTHOGONAL_SOFTNESS: setSoftnessOrthoAng(p_value); break;
 		case PhysicsServer::SLIDER_JOINT_ANGULAR_ORTHOGONAL_RESTITUTION: setRestitutionOrthoAng(p_value); break;
 		case PhysicsServer::SLIDER_JOINT_ANGULAR_ORTHOGONAL_DAMPING: setDampingOrthoAng(p_value); break;
+		case PhysicsServer::SLIDER_JOINT_MAX: break; // Can't happen, but silences warning
 	}
 }
 

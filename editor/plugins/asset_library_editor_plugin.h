@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,6 +27,7 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #ifndef ASSET_LIBRARY_EDITOR_PLUGIN_H
 #define ASSET_LIBRARY_EDITOR_PLUGIN_H
 
@@ -193,6 +194,7 @@ class EditorAssetLibrary : public PanelContainer {
 	Button *search;
 	ProgressBar *load_status;
 	HBoxContainer *error_hb;
+	TextureRect *error_tr;
 	Label *error_label;
 	MenuButton *support;
 
@@ -239,7 +241,6 @@ class EditorAssetLibrary : public PanelContainer {
 
 		bool active;
 		int queue_id;
-		int asset_id;
 		ImageType image_type;
 		int image_index;
 		String image_url;

@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,12 +27,13 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #include "file_access.h"
 
 #include "core/io/file_access_pack.h"
 #include "core/io/marshalls.h"
-#include "os/os.h"
-#include "project_settings.h"
+#include "core/os/os.h"
+#include "core/project_settings.h"
 
 #include "thirdparty/misc/md5.h"
 #include "thirdparty/misc/sha256.h"
@@ -45,7 +46,6 @@ bool FileAccess::backup_save = false;
 
 FileAccess *FileAccess::create(AccessType p_access) {
 
-	ERR_FAIL_COND_V(!create_func, 0);
 	ERR_FAIL_INDEX_V(p_access, ACCESS_MAX, 0);
 
 	FileAccess *ret = create_func[p_access]();
@@ -165,6 +165,7 @@ String FileAccess::fix_path(const String &p_path) const {
 
 			return r_path;
 		} break;
+		case ACCESS_MAX: break; // Can't happen, but silences warning
 	}
 
 	return r_path;
@@ -261,21 +262,73 @@ String FileAccess::get_token() const {
 	while (!eof_reached()) {
 
 		if (c <= ' ') {
-			if (!token.empty())
+			if (token.length())
 				break;
 		} else {
-			token.push_back(c);
+			token += c;
 		}
 		c = get_8();
 	}
 
-	token.push_back(0);
 	return String::utf8(token.get_data());
 }
 
+class CharBuffer {
+	Vector<char> vector;
+	char stack_buffer[256];
+
+	char *buffer;
+	int capacity;
+	int written;
+
+	bool grow() {
+
+		if (vector.resize(next_power_of_2(1 + written)) != OK) {
+
+			return false;
+		}
+
+		if (buffer == stack_buffer) { // first chunk?
+
+			for (int i = 0; i < written; i++) {
+
+				vector.write[i] = stack_buffer[i];
+			}
+		}
+
+		buffer = vector.ptrw();
+		capacity = vector.size();
+		ERR_FAIL_COND_V(written >= capacity, false);
+
+		return true;
+	}
+
+public:
+	_FORCE_INLINE_ CharBuffer() :
+			buffer(stack_buffer),
+			capacity(sizeof(stack_buffer) / sizeof(char)),
+			written(0) {
+	}
+
+	_FORCE_INLINE_ void push_back(char c) {
+
+		if (written >= capacity) {
+
+			ERR_FAIL_COND(!grow());
+		}
+
+		buffer[written++] = c;
+	}
+
+	_FORCE_INLINE_ const char *get_data() const {
+
+		return buffer;
+	}
+};
+
 String FileAccess::get_line() const {
 
-	CharString line;
+	CharBuffer line;
 
 	CharType c = get_8();
 
@@ -293,14 +346,15 @@ String FileAccess::get_line() const {
 	return String::utf8(line.get_data());
 }
 
-Vector<String> FileAccess::get_csv_line(String delim) const {
+Vector<String> FileAccess::get_csv_line(const String &p_delim) const {
 
-	ERR_FAIL_COND_V(delim.length() != 1, Vector<String>());
+	ERR_FAIL_COND_V(p_delim.length() != 1, Vector<String>());
 
 	String l;
 	int qc = 0;
 	do {
-		ERR_FAIL_COND_V(eof_reached(), Vector<String>());
+		if (eof_reached())
+			break;
 
 		l += get_line() + "\n";
 		qc = 0;
@@ -323,7 +377,7 @@ Vector<String> FileAccess::get_csv_line(String delim) const {
 		CharType c = l[i];
 		CharType s[2] = { 0, 0 };
 
-		if (!in_quote && c == delim[0]) {
+		if (!in_quote && c == p_delim[0]) {
 			strings.push_back(current);
 			current = String();
 		} else if (c == '"') {
@@ -425,6 +479,9 @@ void FileAccess::store_double(double p_dest) {
 
 uint64_t FileAccess::get_modified_time(const String &p_file) {
 
+	if (PackedData::get_singleton() && !PackedData::get_singleton()->is_disabled() && PackedData::get_singleton()->has_path(p_file))
+		return 0;
+
 	FileAccess *fa = create_for_path(p_file);
 	ERR_FAIL_COND_V(!fa, 0);
 
@@ -467,6 +524,28 @@ void FileAccess::store_line(const String &p_line) {
 
 	store_string(p_line);
 	store_8('\n');
+}
+
+void FileAccess::store_csv_line(const Vector<String> &p_values, const String &p_delim) {
+
+	ERR_FAIL_COND(p_delim.length() != 1);
+
+	String line = "";
+	int size = p_values.size();
+	for (int i = 0; i < size; ++i) {
+		String value = p_values[i];
+
+		if (value.find("\"") != -1 || value.find(p_delim) != -1 || value.find("\n") != -1) {
+			value = "\"" + value.replace("\"", "\"\"") + "\"";
+		}
+		if (i < size - 1) {
+			value += p_delim;
+		}
+
+		line += value;
+	}
+
+	store_line(line);
 }
 
 void FileAccess::store_buffer(const uint8_t *p_src, int p_length) {
@@ -513,6 +592,37 @@ String FileAccess::get_md5(const String &p_file) {
 	String ret = String::md5(md5.digest);
 
 	memdelete(f);
+	return ret;
+}
+
+String FileAccess::get_multiple_md5(const Vector<String> &p_file) {
+
+	MD5_CTX md5;
+	MD5Init(&md5);
+
+	for (int i = 0; i < p_file.size(); i++) {
+		FileAccess *f = FileAccess::open(p_file[i], READ);
+		ERR_CONTINUE(!f);
+
+		unsigned char step[32768];
+
+		while (true) {
+
+			int br = f->get_buffer(step, 32768);
+			if (br > 0) {
+
+				MD5Update(&md5, step, br);
+			}
+			if (br < 4096)
+				break;
+		}
+		memdelete(f);
+	}
+
+	MD5Final(&md5);
+
+	String ret = String::md5(md5.digest);
+
 	return ret;
 }
 

@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,6 +27,7 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #ifdef JAVASCRIPT_EVAL_ENABLED
 
 #include "api/javascript_eval.h"
@@ -68,7 +69,7 @@ Variant JavaScript::eval(const String &p_code, bool p_use_global_exec_context) {
 				eval_ret = eval(UTF8ToString(CODE));
 			}
 		} catch (e) {
-			Module.printErr(e);
+			console.warn(e);
 			eval_ret = null;
 		}
 
@@ -96,7 +97,7 @@ Variant JavaScript::eval(const String &p_code, bool p_use_global_exec_context) {
 					if (array_ptr!==0) {
 						_free(array_ptr)
 					}
-					Module.printErr(e);
+					console.warn(e);
 					// fall through
 				}
 				break;
@@ -139,8 +140,9 @@ Variant JavaScript::eval(const String &p_code, bool p_use_global_exec_context) {
 		case Variant::POOL_BYTE_ARRAY:
 			arr_write = PoolByteArray::Write();
 			return arr;
+		default:
+			return Variant();
 	}
-	return Variant();
 }
 
 #endif // JAVASCRIPT_EVAL_ENABLED

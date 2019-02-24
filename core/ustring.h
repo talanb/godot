@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,23 +27,82 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
-#ifndef RSTRING_H
-#define RSTRING_H
 
-#include "array.h"
-#include "typedefs.h"
-#include "vector.h"
+#ifndef USTRING_H
+#define USTRING_H
+
+#include "core/array.h"
+#include "core/cowdata.h"
+#include "core/typedefs.h"
+#include "core/vector.h"
 
 /**
-	@author red <red@killy>
+	@author Juan Linietsky <reduzio@gmail.com>
 */
 
-class CharString : public Vector<char> {
+template <class T>
+class CharProxy {
+	friend class CharString;
+	friend class String;
+
+	const int _index;
+	CowData<T> &_cowdata;
+	static const T _null = 0;
+
+	_FORCE_INLINE_ CharProxy(const int &p_index, CowData<T> &cowdata) :
+			_index(p_index),
+			_cowdata(cowdata) {}
+
 public:
+	_FORCE_INLINE_ operator T() const {
+		if (unlikely(_index == _cowdata.size()))
+			return _null;
+
+		return _cowdata.get(_index);
+	}
+
+	_FORCE_INLINE_ const T *operator&() const {
+		return _cowdata.ptr() + _index;
+	}
+
+	_FORCE_INLINE_ void operator=(const T &other) const {
+		_cowdata.set(_index, other);
+	}
+
+	_FORCE_INLINE_ void operator=(const CharProxy<T> &other) const {
+		_cowdata.set(_index, other.operator T());
+	}
+};
+
+class CharString {
+
+	CowData<char> _cowdata;
+	static const char _null;
+
+public:
+	_FORCE_INLINE_ char *ptrw() { return _cowdata.ptrw(); }
+	_FORCE_INLINE_ const char *ptr() const { return _cowdata.ptr(); }
+	_FORCE_INLINE_ int size() const { return _cowdata.size(); }
+	Error resize(int p_size) { return _cowdata.resize(p_size); }
+
+	_FORCE_INLINE_ char get(int p_index) const { return _cowdata.get(p_index); }
+	_FORCE_INLINE_ void set(int p_index, const char &p_elem) { _cowdata.set(p_index, p_elem); }
+	_FORCE_INLINE_ const char &operator[](int p_index) const {
+		if (unlikely(p_index == _cowdata.size()))
+			return _null;
+
+		return _cowdata.get(p_index);
+	}
+	_FORCE_INLINE_ CharProxy<char> operator[](int p_index) { return CharProxy<char>(p_index, _cowdata); }
+
+	_FORCE_INLINE_ CharString() {}
+	_FORCE_INLINE_ CharString(const CharString &p_str) { _cowdata._ref(p_str._cowdata); }
+
 	bool operator<(const CharString &p_right) const;
+	CharString &operator+=(char p_char);
 	int length() const { return size() ? size() - 1 : 0; }
 	const char *get_data() const;
-	operator const char *() { return get_data(); };
+	operator const char *() const { return get_data(); };
 };
 
 typedef wchar_t CharType;
@@ -59,11 +118,15 @@ struct StrRange {
 	}
 };
 
-class String : public Vector<CharType> {
+class String {
+
+	CowData<CharType> _cowdata;
+	static const CharType _null;
 
 	void copy_from(const char *p_cstr);
-	void copy_from(const CharType *p_cstr, int p_clip_to = -1);
+	void copy_from(const CharType *p_cstr, const int p_clip_to = -1);
 	void copy_from(const CharType &p_char);
+	void copy_from_unchecked(const CharType *p_char, const int p_length);
 	bool _base_is_subsequence_of(const String &p_string, bool case_insensitive) const;
 
 public:
@@ -71,6 +134,26 @@ public:
 
 		npos = -1 ///<for "some" compatibility with std::string (npos is a huge value in std::string)
 	};
+
+	_FORCE_INLINE_ CharType *ptrw() { return _cowdata.ptrw(); }
+	_FORCE_INLINE_ const CharType *ptr() const { return _cowdata.ptr(); }
+
+	void remove(int p_index) { _cowdata.remove(p_index); }
+
+	_FORCE_INLINE_ void clear() { resize(0); }
+
+	_FORCE_INLINE_ CharType get(int p_index) const { return _cowdata.get(p_index); }
+	_FORCE_INLINE_ void set(int p_index, const CharType &p_elem) { _cowdata.set(p_index, p_elem); }
+	_FORCE_INLINE_ int size() const { return _cowdata.size(); }
+	Error resize(int p_size) { return _cowdata.resize(p_size); }
+
+	_FORCE_INLINE_ const CharType &operator[](int p_index) const {
+		if (unlikely(p_index == _cowdata.size()))
+			return _null;
+
+		return _cowdata.get(p_index);
+	}
+	_FORCE_INLINE_ CharProxy<CharType> operator[](int p_index) { return CharProxy<CharType>(p_index, _cowdata); }
 
 	bool operator==(const String &p_str) const;
 	bool operator!=(const String &p_str) const;
@@ -93,8 +176,8 @@ public:
 	bool operator!=(const CharType *p_str) const;
 	bool operator<(const CharType *p_str) const;
 	bool operator<(const char *p_str) const;
-	bool operator<(String p_str) const;
-	bool operator<=(String p_str) const;
+	bool operator<(const String &p_str) const;
+	bool operator<=(const String &p_str) const;
 
 	signed char casecmp_to(const String &p_str) const;
 	signed char nocasecmp_to(const String &p_str) const;
@@ -103,15 +186,20 @@ public:
 	const CharType *c_str() const;
 	/* standard size stuff */
 
-	int length() const;
+	_FORCE_INLINE_ int length() const {
+		int s = size();
+		return s ? (s - 1) : 0; // length does not include zero
+	}
 
 	/* complex helpers */
 	String substr(int p_from, int p_chars) const;
-	int find(String p_str, int p_from = 0) const; ///< return <0 if failed
-	int find_last(String p_str) const; ///< return <0 if failed
-	int findn(String p_str, int p_from = 0) const; ///< return <0 if failed, case insensitive
-	int rfind(String p_str, int p_from = -1) const; ///< return <0 if failed
-	int rfindn(String p_str, int p_from = -1) const; ///< return <0 if failed, case insensitive
+	int find(const String &p_str, int p_from = 0) const; ///< return <0 if failed
+	int find(const char *p_str, int p_from = 0) const; ///< return <0 if failed
+	int find_char(const CharType &p_char, int p_from = 0) const; ///< return <0 if failed
+	int find_last(const String &p_str) const; ///< return <0 if failed
+	int findn(const String &p_str, int p_from = 0) const; ///< return <0 if failed, case insensitive
+	int rfind(const String &p_str, int p_from = -1) const; ///< return <0 if failed
+	int rfindn(const String &p_str, int p_from = -1) const; ///< return <0 if failed, case insensitive
 	int findmk(const Vector<String> &p_keys, int p_from = 0, int *r_key = NULL) const; ///< return <0 if failed
 	bool match(const String &p_wildcard) const;
 	bool matchn(const String &p_wildcard) const;
@@ -125,12 +213,15 @@ public:
 	Vector<String> bigrams() const;
 	float similarity(const String &p_string) const;
 	String format(const Variant &values, String placeholder = "{_}") const;
-	String replace_first(String p_key, String p_with) const;
-	String replace(String p_key, String p_with) const;
-	String replacen(String p_key, String p_with) const;
-	String insert(int p_at_pos, String p_string) const;
+	String replace_first(const String &p_key, const String &p_with) const;
+	String replace(const String &p_key, const String &p_with) const;
+	String replace(const char *p_key, const char *p_with) const;
+	String replacen(const String &p_key, const String &p_with) const;
+	String insert(int p_at_pos, const String &p_string) const;
 	String pad_decimals(int p_digits) const;
 	String pad_zeros(int p_digits) const;
+	String trim_prefix(const String &p_prefix) const;
+	String trim_suffix(const String &p_suffix) const;
 	String lpad(int min_length, const String &character = " ") const;
 	String rpad(int min_length, const String &character = " ") const;
 	String sprintf(const Array &values, bool *error) const;
@@ -140,6 +231,7 @@ public:
 	static String num_scientific(double p_num);
 	static String num_real(double p_num);
 	static String num_int64(int64_t p_num, int base = 10, bool capitalize_hex = false);
+	static String num_uint64(uint64_t p_num, int base = 10, bool capitalize_hex = false);
 	static String chr(CharType p_char);
 	static String md5(const uint8_t *p_md5);
 	static String hex_encode_buffer(const uint8_t *p_buffer, int p_len);
@@ -162,7 +254,8 @@ public:
 	String get_slice(String p_splitter, int p_slice) const;
 	String get_slicec(CharType p_splitter, int p_slice) const;
 
-	Vector<String> split(const String &p_splitter, bool p_allow_empty = true) const;
+	Vector<String> split(const String &p_splitter, bool p_allow_empty = true, int p_maxsplit = 0) const;
+	Vector<String> rsplit(const String &p_splitter, bool p_allow_empty = true, int p_maxsplit = 0) const;
 	Vector<String> split_spaces() const;
 	Vector<float> split_floats(const String &p_splitter, bool p_allow_empty = true) const;
 	Vector<float> split_floats_mk(const Vector<String> &p_splitters, bool p_allow_empty = true) const;
@@ -181,6 +274,8 @@ public:
 	String dedent() const;
 	String strip_edges(bool left = true, bool right = true) const;
 	String strip_escapes() const;
+	String lstrip(const String &p_chars) const;
+	String rstrip(const String &p_chars) const;
 	String get_extension() const;
 	String get_basename() const;
 	String plus_file(const String &p_file) const;
@@ -204,7 +299,7 @@ public:
 	Vector<uint8_t> md5_buffer() const;
 	Vector<uint8_t> sha256_buffer() const;
 
-	inline bool empty() const { return length() == 0; }
+	_FORCE_INLINE_ bool empty() const { return length() == 0; }
 
 	// path functions
 	bool is_abs_path() const;
@@ -241,7 +336,10 @@ public:
 	 * The constructors must not depend on other overloads
 	 */
 	/*	String(CharType p_char);*/
-	inline String() {}
+
+	_FORCE_INLINE_ String() {}
+	_FORCE_INLINE_ String(const String &p_str) { _cowdata._ref(p_str._cowdata); }
+
 	String(const char *p_str);
 	String(const CharType *p_str, int p_clip_to_len = -1);
 	String(const StrRange &p_range);
@@ -272,6 +370,29 @@ struct NaturalNoCaseComparator {
 	}
 };
 
+template <typename L, typename R>
+_FORCE_INLINE_ bool is_str_less(const L *l_ptr, const R *r_ptr) {
+
+	while (true) {
+
+		if (*l_ptr == 0 && *r_ptr == 0)
+			return false;
+		else if (*l_ptr == 0)
+			return true;
+		else if (*r_ptr == 0)
+			return false;
+		else if (*l_ptr < *r_ptr)
+			return true;
+		else if (*l_ptr > *r_ptr)
+			return false;
+
+		l_ptr++;
+		r_ptr++;
+	}
+
+	CRASH_COND(true); // unreachable
+}
+
 /* end of namespace */
 
 //tool translate
@@ -288,4 +409,7 @@ String TTR(const String &);
 //tool or regular translate
 String RTR(const String &);
 
-#endif
+bool is_symbol(CharType c);
+bool select_word(const String &p_s, int p_col, int &r_beg, int &r_end);
+
+#endif // USTRING_H

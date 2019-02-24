@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,6 +27,7 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #include "gdnative/transform.h"
 
 #include "core/math/transform.h"
@@ -55,6 +56,12 @@ void GDAPI godot_transform_new(godot_transform *r_dest, const godot_basis *p_bas
 	*dest = Transform(*basis, *origin);
 }
 
+void GDAPI godot_transform_new_with_quat(godot_transform *r_dest, const godot_quat *p_quat) {
+	const Quat *quat = (const Quat *)p_quat;
+	Transform *dest = (Transform *)r_dest;
+	*dest = Transform(*quat);
+}
+
 godot_basis GDAPI godot_transform_get_basis(const godot_transform *p_self) {
 	godot_basis dest;
 	const Transform *self = (const Transform *)p_self;
@@ -62,7 +69,7 @@ godot_basis GDAPI godot_transform_get_basis(const godot_transform *p_self) {
 	return dest;
 }
 
-void GDAPI godot_transform_set_basis(godot_transform *p_self, godot_basis *p_v) {
+void GDAPI godot_transform_set_basis(godot_transform *p_self, const godot_basis *p_v) {
 	Transform *self = (Transform *)p_self;
 	const Basis *v = (const Basis *)p_v;
 	self->basis = *v;
@@ -75,7 +82,7 @@ godot_vector3 GDAPI godot_transform_get_origin(const godot_transform *p_self) {
 	return dest;
 }
 
-void GDAPI godot_transform_set_origin(godot_transform *p_self, godot_vector3 *p_v) {
+void GDAPI godot_transform_set_origin(godot_transform *p_self, const godot_vector3 *p_v) {
 	Transform *self = (Transform *)p_self;
 	const Vector3 *v = (const Vector3 *)p_v;
 	self->origin = *v;

@@ -5,8 +5,8 @@
 /*                           GODOT ENGINE                                */
 /*                      https://godotengine.org                          */
 /*************************************************************************/
-/* Copyright (c) 2007-2017 Juan Linietsky, Ariel Manzur.                 */
-/* Copyright (c) 2014-2017 Godot Engine contributors (cf. AUTHORS.md)    */
+/* Copyright (c) 2007-2019 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2014-2019 Godot Engine contributors (cf. AUTHORS.md)    */
 /*                                                                       */
 /* Permission is hereby granted, free of charge, to any person obtaining */
 /* a copy of this software and associated documentation files (the       */
@@ -27,9 +27,11 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE     */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                */
 /*************************************************************************/
+
 #include "quat.h"
-#include "matrix3.h"
-#include "print_string.h"
+
+#include "core/math/basis.h"
+#include "core/print_string.h"
 
 // set_euler_xyz expects a vector containing the Euler angles in the format
 // (ax,ay,az), where ax is the angle of rotation around x axis,
@@ -88,7 +90,7 @@ void Quat::set_euler_yxz(const Vector3 &p_euler) {
 
 	set(sin_a1 * cos_a2 * sin_a3 + cos_a1 * sin_a2 * cos_a3,
 			sin_a1 * cos_a2 * cos_a3 - cos_a1 * sin_a2 * sin_a3,
-			-sin_a1 * sin_a2 * cos_a3 + cos_a1 * sin_a2 * sin_a3,
+			-sin_a1 * sin_a2 * cos_a3 + cos_a1 * cos_a2 * sin_a3,
 			sin_a1 * sin_a2 * sin_a3 + cos_a1 * cos_a2 * cos_a3);
 }
 
@@ -97,6 +99,9 @@ void Quat::set_euler_yxz(const Vector3 &p_euler) {
 // and similar for other axes.
 // This implementation uses YXZ convention (Z is the first rotation).
 Vector3 Quat::get_euler_yxz() const {
+#ifdef MATH_CHECKS
+	ERR_FAIL_COND_V(!is_normalized(), Vector3(0, 0, 0));
+#endif
 	Basis m(*this);
 	return m.get_euler_yxz();
 }
@@ -130,15 +135,21 @@ Quat Quat::normalized() const {
 }
 
 bool Quat::is_normalized() const {
-	return Math::is_equal_approx(length(), 1.0);
+	return Math::is_equal_approx(length_squared(), 1.0);
 }
 
 Quat Quat::inverse() const {
+#ifdef MATH_CHECKS
+	ERR_FAIL_COND_V(!is_normalized(), Quat());
+#endif
 	return Quat(-x, -y, -z, w);
 }
 
 Quat Quat::slerp(const Quat &q, const real_t &t) const {
-
+#ifdef MATH_CHECKS
+	ERR_FAIL_COND_V(!is_normalized(), Quat());
+	ERR_FAIL_COND_V(!q.is_normalized(), Quat());
+#endif
 	Quat to1;
 	real_t omega, cosom, sinom, scale0, scale1;
 
@@ -182,7 +193,10 @@ Quat Quat::slerp(const Quat &q, const real_t &t) const {
 }
 
 Quat Quat::slerpni(const Quat &q, const real_t &t) const {
-
+#ifdef MATH_CHECKS
+	ERR_FAIL_COND_V(!is_normalized(), Quat());
+	ERR_FAIL_COND_V(!q.is_normalized(), Quat());
+#endif
 	const Quat &from = *this;
 
 	real_t dot = from.dot(q);
@@ -201,7 +215,10 @@ Quat Quat::slerpni(const Quat &q, const real_t &t) const {
 }
 
 Quat Quat::cubic_slerp(const Quat &q, const Quat &prep, const Quat &postq, const real_t &t) const {
-
+#ifdef MATH_CHECKS
+	ERR_FAIL_COND_V(!is_normalized(), Quat());
+	ERR_FAIL_COND_V(!q.is_normalized(), Quat());
+#endif
 	//the only way to do slerp :|
 	real_t t2 = (1.0 - t) * t * 2;
 	Quat sp = this->slerp(q, t);
@@ -214,7 +231,10 @@ Quat::operator String() const {
 	return String::num(x) + ", " + String::num(y) + ", " + String::num(z) + ", " + String::num(w);
 }
 
-Quat::Quat(const Vector3 &axis, const real_t &angle) {
+void Quat::set_axis_angle(const Vector3 &axis, const real_t &angle) {
+#ifdef MATH_CHECKS
+	ERR_FAIL_COND(!axis.is_normalized());
+#endif
 	real_t d = axis.length();
 	if (d == 0)
 		set(0, 0, 0, 0);
